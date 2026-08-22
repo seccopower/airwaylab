@@ -52,18 +52,18 @@ for b in branches:
                    'line': {'color': col, 'width': float(w)},
                    'hovertemplate': ht + '<extra></extra>', 'showlegend': False})
 
-# barre per lobo: mismatch di distanza e BA>1 (assi descrittivi separati)
+# barre per lobo: DUE assi distinti (copertura maschere vs morfometria BA)
 lobi = [k for k in per_lobo if k != 'CENTRAL']
-lobi.sort(key=lambda k: -(per_lobo[k].get('mismatch_frac') or 0))
-mm = [round(100 * (per_lobo[k].get('mismatch_frac') or 0), 1) for k in lobi]
+lobi.sort(key=lambda k: -(per_lobo[k].get('coverage_gap_frac') or 0))
+mm = [round(100 * (per_lobo[k].get('coverage_gap_frac') or 0), 1) for k in lobi]
 bg = [round(100 * (per_lobo[k].get('ba_gt1_frac') or 0), 1) for k in lobi]
 
 rows = ''.join(
-    f"<tr><td>{k}</td><td>{per_lobo[k].get('delta_med_mm')}</td>"
-    f"<td>{per_lobo[k].get('mismatch_frac')}</td>"
+    f"<tr><td>{k}</td><td>{per_lobo[k].get('coverage_gap_frac')}</td>"
+    f"<td>{per_lobo[k].get('coverage_label')}</td>"
     f"<td>{per_lobo[k].get('ba_med')}</td>"
     f"<td>{per_lobo[k].get('ba_gt1_frac')}</td>"
-    f"<td><b>{per_lobo[k].get('prevalenza')}</b></td></tr>"
+    f"<td>{per_lobo[k].get('ba_label')}</td></tr>"
     for k in lobi)
 
 # ancore D/S che ruotano con l'anatomia (riferimento destra/sinistra; LPS: +x = S)
@@ -121,9 +121,9 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
   .sw {{ width:14px; height:14px; border-radius:4px; display:inline-block; vertical-align:middle; margin-right:5px }}
 </style></head><body><div class="viz-root"><div class="wrap">
 <h1>Discordanza morfometrica bronco–arteria</h1>
-<p class="sub">{name} · due assi descrittivi separati: rapporto bronco–arteria e mismatch di distanza regionale — esplorativi, non funzionali</p>
+<p class="sub">{name} · due assi DISTINTI e non combinati: copertura delle maschere e rapporto bronco–arteria — esplorativi, non funzionali</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
-  ⚠ <b>Indici ESPLORATIVI e DESCRITTIVI, non validati, non diagnosi.</b> Il "mismatch" è basato sulla distanza dai due alberi: l'albero vascolare si segmenta più a fondo di quello aereo, quindi un mismatch alto indica soprattutto <b>via aerea non rappresentata / sotto-risoluzione</b>, <b>non occlusione</b> (che richiede evidenza CT positiva). Il rapporto BA <b>non distingue</b> dilatazione bronchiale da assottigliamento arterioso. Si legge il confronto <b>tra lobi</b>, non i valori assoluti.</div>
+  ⚠ <b>Indici ESPLORATIVI e DESCRITTIVI, non validati, non diagnosi.</b> L'asse <b>copertura</b> misura parenchima vicino a un vaso ma <b>non rappresentato nella maschera delle vie aeree</b>: la via non rappresentata resta <i>missing</i> (non entra come diametro zero). Cause possibili: limite di risoluzione, diversa profondità di segmentazione, errore di segmentazione o reale interruzione anatomica — <b>indistinguibili qui</b>; <b>non</b> è occlusione (richiederebbe evidenza CT positiva). L'asse <b>morfometrico BA</b> è calcolato solo su coppie reportabili e <b>non distingue</b> dilatazione bronchiale da assottigliamento arterioso. I due assi <b>non vanno fusi</b>. Confronto <b>tra lobi</b>.</div>
 <div class="card">
   <h2>Albero colorato dal rapporto bronco–arteria</h2>
   <p class="note">Rosso = bronco più largo dell'arteria satellite (BA&gt;1); blu = più stretto; grigio ≈ 1. Un BA&gt;1 <b>non</b> distingue dilatazione bronchiale da riduzione arteriosa. I rami non accoppiati sono grigio chiaro e sottili.</p>
@@ -141,13 +141,13 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 </div>
 {coronal_card}
 <div class="card">
-  <h2>Per lobo: mismatch di distanza vs BA&gt;1</h2>
-  <p class="note">Blu = % di parenchima in mismatch di distanza (via aerea non rappresentata/sotto-risoluzione, <b>non</b> occlusione). Arancio = % di bronchi con BA&gt;1 (dilatazione bronchiale <b>o</b> assottigliamento arterioso: il rapporto non li distingue). Regionalizzato: confronta i lobi tra loro.</p>
+  <h2>Per lobo: DUE assi distinti (non combinati)</h2>
+  <p class="note"><b>Blu = copertura</b>: % di parenchima vicino a un vaso ma non coperto dalla maschera delle vie aeree (via aerea <b>non rappresentata</b> — risoluzione/profondità di segmentazione/errore/interruzione, indistinguibili; <b>non</b> occlusione, <b>non</b> morfometria). <b>Arancio = morfometria BA&gt;1</b>: % di bronchi (solo coppie reportabili) più larghi dell'arteria (non distingue dilatazione da assottigliamento arterioso). I due assi misurano cose diverse e <b>non</b> vanno fusi. Confronta i lobi tra loro.</p>
   <div id="bars"></div>
 </div>
 <div class="card">
-  <h2>Tabella regionale</h2>
-  <table><thead><tr><th>Lobo</th><th>delta med (mm)</th><th>mismatch</th><th>BA med</th><th>BA&gt;1</th><th>prevalenza</th></tr></thead>
+  <h2>Tabella regionale — assi separati</h2>
+  <table><thead><tr><th>Lobo</th><th>copertura gap</th><th>copertura (soglia espl.)</th><th>BA med</th><th>BA&gt;1</th><th>morfometria BA (soglia espl.)</th></tr></thead>
   <tbody>{rows}</tbody></table>
 </div>
 </div></div>
@@ -166,8 +166,8 @@ Plotly.newPlot('cloud3d', __CLOUDS__, {{
   {{displayModeBar:false, responsive:true}});
 const L={json.dumps(lobi)}, MM={json.dumps(mm)}, BG={json.dumps(bg)};
 Plotly.newPlot('bars', [
-  {{type:'bar', name:'mismatch %', x:L, y:MM, marker:{{color:'#2a78d6'}}}},
-  {{type:'bar', name:'BA>1 %', x:L, y:BG, marker:{{color:'#eb6834'}}}}
+  {{type:'bar', name:'copertura gap %', x:L, y:MM, marker:{{color:'#2a78d6'}}}},
+  {{type:'bar', name:'morfometria BA>1 %', x:L, y:BG, marker:{{color:'#eb6834'}}}}
 ], {{ barmode:'group', margin:{{l:44,r:10,t:8,b:30}},
   legend:{{orientation:'h',y:1.15}}, yaxis:{{title:{{text:'%'}},color:'#898781'}},
   xaxis:{{color:'#898781'}}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)' }},

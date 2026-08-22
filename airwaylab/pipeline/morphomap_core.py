@@ -120,19 +120,20 @@ def aggregate_lobes(territories, lobes=LOBE_AID):
 
 
 def classify_lobe(laa, ds_share, laa_hi=0.40, share_hi=0.20, laa_lo=0.25):
-    """Etichetta DESCRITTIVA ed esplorativa del lobo (non diagnosi).
-
-    Incrocia bassa attenuazione inspiratoria (laa, frazione < -950 HU) e quota del
-    carico pesato per conduttanza (ds_share). NB: su singola inspiratoria la bassa
-    attenuazione NON equivale a distruzione parenchimale (puo' riflettere
-    iperinflazione / air-trapping non enfisematoso, specie nell'asma). Nessun
-    riferimento a distruzione o spazio morto."""
+    """Etichetta DESCRITTIVA riferita a SOGLIE esplorative esplicite (non diagnosi,
+    non categorie cliniche). Incrocia bassa attenuazione inspiratoria (laa, frazione
+    < -950 HU) e quota di flusso simulato del lobo (ds_share). Le parole 'alta'/'bassa'
+    sono sempre riferite alle soglie riportate. NB: su singola inspiratoria la bassa
+    attenuazione NON equivale a distruzione; l'air-trapping non e' identificabile da
+    questa acquisizione (serve l'espiratoria). Nessun riferimento a distruzione/spazio
+    morto/ventilazione."""
     if laa is None or ds_share is None:
         return 'dati insufficienti'
+    L, S = int(laa_hi * 100), int(share_hi * 100)
     if laa >= laa_hi and ds_share >= share_hi:
-        return 'conduttanza elevata su area a bassa attenuazione'
+        return f'LAA ≥{L}% e quota flusso simulato ≥{S}% (soglie espl.)'
     if laa >= laa_hi:
-        return 'bassa attenuazione elevata, conduttanza contenuta'
+        return f'LAA ≥{L}%, quota flusso simulato <{S}% (soglie espl.)'
     if laa < laa_lo:
-        return 'bassa attenuazione limitata'
-    return 'intermedio'
+        return f'LAA <{int(laa_lo * 100)}% (soglia espl.)'
+    return 'intermedio (soglie espl.)'

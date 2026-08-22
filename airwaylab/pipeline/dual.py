@@ -15,7 +15,7 @@ from scipy import ndimage
 from PIL import Image
 import json, io, base64, os
 
-from discordance import classify_lobe, lobe_of, regional_summary
+from discordance import ba_label, coverage_label, lobe_of, regional_summary
 
 info = json.load(open('out/seg_info.json'))
 ISO = info['iso']
@@ -110,7 +110,11 @@ try:
         ba_by_lobe.setdefault(lb, []).append(p.get('ba'))
 
     reg = regional_summary(delta_by_lobe, ba_by_lobe)
-    regional = {lb: {**reg[lb], **classify_lobe(reg[lb])} for lb in reg}
+    # due assi separati, etichette indipendenti, NESSUN fenotipo combinato
+    regional = {lb: {**reg[lb],
+                     'coverage_label': coverage_label(reg[lb]['coverage_gap_frac']),
+                     'ba_label': ba_label(reg[lb]['ba_gt1_frac'])}
+                for lb in reg}
 
     # --- nuvola 3D del delta nel frame di DISPLAY dell'albero (per dual_viz) --
     # voxel DS -> voxel pieno (*DS) -> coord ritagliate (-off) -> mm (*ISO).
@@ -131,21 +135,23 @@ try:
         cloud = {'x': [], 'y': [], 'z': [], 'delta': []}
     out_reg = {
         'status': 'exploratory',
-        'nota': 'indici esplorativi e DESCRITTIVI, non validati; la mappa voxel ha '
-                'bias di visibilita\' bronchi/vasi (leggere il confronto TRA lobi). '
-                'mismatch_idx = frazione voxel con delta>10mm (via aerea non '
-                'rappresentata/sotto-risoluzione, NON occlusione); ba_gt1_idx = '
-                'frazione bronchi con BA>1 (NON distingue dilatazione da pruning). '
-                'Assi separati, nessuna diagnosi.',
+        'nota': 'due assi DISTINTI e non combinati, esplorativi, non validati, non '
+                'diagnosi. coverage_gap_frac = frazione di parenchima vicino a un vaso '
+                'ma NON coperto dalla maschera delle vie aeree: e\' COPERTURA '
+                'algoritmica (via aerea non rappresentata), NON occlusione ne\' '
+                'morfometria; la via non rappresentata resta missing, non entra come '
+                'diametro zero. ba_gt1_frac = frazione di bronchi con BA>1, solo su '
+                'coppie rappresentate e reportabili (NON distingue dilatazione da '
+                'assottigliamento arterioso). I due assi non vanno fusi.',
         'mismatch_mm': 10.0, 'ba_dilatazione': 1.0,
         'per_lobo': regional,
         'cloud': cloud,
     }
     json.dump(out_reg, open('out/discordance_regional.json', 'w'), indent=1)
-    print('discordanza regionale per lobo:')
-    for lb, s in sorted(regional.items(), key=lambda x: -(x[1]['mismatch_frac'] or 0)):
-        print(f"  {lb:8s} mismatch {s['mismatch_frac']} · BA>1 {s['ba_gt1_frac']}"
-              f" · {s['prevalenza']}")
+    print('discordanza regionale per lobo (assi separati):')
+    for lb, s in sorted(regional.items(), key=lambda x: -(x[1]['coverage_gap_frac'] or 0)):
+        print(f"  {lb:8s} copertura-gap {s['coverage_gap_frac']} · BA>1 {s['ba_gt1_frac']}"
+              f" · [{s['coverage_label']}] [{s['ba_label']}]")
 except FileNotFoundError as e:
     print('discordanza regionale saltata (manca', e.filename, ')')
 

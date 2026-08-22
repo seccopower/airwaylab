@@ -102,18 +102,16 @@ def test_absent_lobe_omitted():
 
 
 def test_classify_lobe():
-    # bassa attenuazione alta + conduttanza alta
-    assert classify_lobe(0.72, 0.49) == 'conduttanza elevata su area a bassa attenuazione'
-    # bassa attenuazione alta ma conduttanza contenuta
-    assert classify_lobe(0.48, 0.13) == 'bassa attenuazione elevata, conduttanza contenuta'
-    # bassa attenuazione limitata
-    assert classify_lobe(0.12, 0.05) == 'bassa attenuazione limitata'
-    # intermedio
-    assert classify_lobe(0.30, 0.20) == 'intermedio'
-    # etichette prive di claim funzionali
+    # etichette riferite a soglia esplicita
+    assert classify_lobe(0.72, 0.49) == 'LAA ≥40% e quota flusso simulato ≥20% (soglie espl.)'
+    assert classify_lobe(0.48, 0.13) == 'LAA ≥40%, quota flusso simulato <20% (soglie espl.)'
+    assert classify_lobe(0.12, 0.05) == 'LAA <25% (soglia espl.)'
+    assert classify_lobe(0.30, 0.20) == 'intermedio (soglie espl.)'
+    # niente claim funzionali né 'conduttanza' (q è quota di flusso simulato)
     for laa, sh in [(0.72, 0.49), (0.48, 0.13), (0.12, 0.05), (0.30, 0.20)]:
         lab = classify_lobe(laa, sh)
-        assert 'spazio morto' not in lab and 'distrut' not in lab and 'conservato' not in lab
+        for bad in ('spazio morto', 'distrut', 'conservato', 'conduttanza'):
+            assert bad not in lab
     # dati mancanti
     assert classify_lobe(None, 0.5) == 'dati insufficienti'
     assert classify_lobe(0.5, None) == 'dati insufficienti'

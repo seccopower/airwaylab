@@ -5,15 +5,17 @@ bronchi/vasi, ha delta quasi ovunque positivo: si leggono i GRADIENTI, non i
 valori assoluti. Regionalizzando (per lobo/territorio) si confronta lobo con
 lobo, il che cancella gran parte del bias comune e recupera il pattern.
 
-Decomposizione (indici ESPLORATIVI e DESCRITTIVI, non diagnosi): un singolo delta
-mescola due segnali, che teniamo separati —
-  * mismatch di distanza : parenchima vicino a un vaso ma LONTANO dall'albero aereo
-    (delta molto positivo). NON e' occlusione: e' in gran parte via aerea non
-    rappresentata / sotto-risoluzione, per l'asimmetria di profondita' di
-    segmentazione tra albero vascolare (piu' profondo) e aereo;
-  * rapporto bronco-arteria : via aerea piu' larga dell'arteria satellite (BA > 1).
-    NON distingue dilatazione bronchiale da assottigliamento arterioso.
-Si esportano i DUE indici separati, mai fusi in uno, con nomi neutri.
+DUE assi DISTINTI (indici ESPLORATIVI e DESCRITTIVI, non diagnosi), mai fusi in un
+unico fenotipo lobare perche' misurano cose diverse (review GPT, blocker #2):
+  * COPERTURA (coverage_gap_frac) : parenchima vicino a un vaso ma NON coperto dalla
+    maschera delle vie aeree. E' COPERTURA algoritmica (via aerea non rappresentata),
+    NON occlusione e NON morfometria: la via non rappresentata resta 'missing', non
+    entra come diametro zero. Cause possibili indistinguibili: risoluzione, profondita'
+    di segmentazione, errore, o reale interruzione anatomica;
+  * MORFOMETRIA bronco-arteria (ba_*) : rapporto d_bronco/d_arteria, calcolato SOLO su
+    coppie rappresentate e reportabili. NON distingue dilatazione bronchiale da
+    assottigliamento arterioso.
+Un'occlusione CT-verificata richiederebbe evidenza positiva (annotazione futura).
 
 Puro: nessun I/O, solo numpy. Testato in tests/test_discordance.py.
 """
@@ -38,12 +40,22 @@ def lobe_of(bid, by_id, parent, lobe_aids=LOBE_AID):
 
 
 def regional_summary(delta_by_lobe, ba_by_lobe, mismatch_mm=10.0, ba_dil=1.0):
-    """Sintesi per lobo dei due assi della discordanza.
+    """Sintesi per lobo di DUE assi DISTINTI e non combinati (review GPT, blocker #2):
 
-    delta_by_lobe : {lobo -> array dei delta voxel (mm)}
-    ba_by_lobe    : {lobo -> lista dei BA ratio dei bronchi accoppiati}
-    Ritorna {lobo -> {...}} con mediana e frazione di mismatch (asse occlusione)
-    e mediana e frazione BA>1 (asse dilatazione), tenuti SEPARATI."""
+    1) COPERTURA delle maschere (coverage_gap_frac): frazione di parenchima del lobo
+       vicino a un vaso ma NON coperto dalla maschera delle vie aeree. E' una misura di
+       COPERTURA algoritmica (via aerea non rappresentata), NON una misura morfometrica
+       e NON un'occlusione: la via non rappresentata resta 'missing', non entra come
+       diametro zero. Cause possibili: risoluzione, profondita' di segmentazione, errore
+       di segmentazione o reale interruzione anatomica (indistinguibili senza revisione).
+    2) MORFOMETRIA bronco-arteria (ba_*): calcolata SOLO dove entrambi rappresentati e
+       reportabili (coppie misurate). Il rapporto NON distingue dilatazione bronchiale
+       da assottigliamento arterioso.
+
+    delta_by_lobe : {lobo -> array dei delta voxel (mm) = d_aereo - d_vaso}
+    ba_by_lobe    : {lobo -> lista dei BA ratio dei bronchi accoppiati e reportabili}
+    I due assi NON vanno fusi in un unico fenotipo lobare (misurano cose diverse:
+    copertura algoritmica vs geometria appaiata)."""
     out = {}
     lobi = set(delta_by_lobe) | set(ba_by_lobe)
     for lobo in lobi:
@@ -53,7 +65,7 @@ def regional_summary(delta_by_lobe, ba_by_lobe, mismatch_mm=10.0, ba_dil=1.0):
         out[lobo] = {
             'n_voxel': int(d.size),
             'delta_med_mm': round(float(np.median(d)), 1) if d.size else None,
-            'mismatch_frac': round(float((d > mismatch_mm).mean()), 3) if d.size else None,
+            'coverage_gap_frac': round(float((d > mismatch_mm).mean()), 3) if d.size else None,
             'n_ba': len(ba),
             'ba_med': round(float(np.median(ba)), 2) if ba else None,
             'ba_gt1_frac': round(float(np.mean([x > ba_dil for x in ba])), 3) if ba else None,
@@ -61,33 +73,22 @@ def regional_summary(delta_by_lobe, ba_by_lobe, mismatch_mm=10.0, ba_dil=1.0):
     return out
 
 
-def classify_lobe(stat, mismatch_hi=0.5, ba_hi=0.5):
-    """Etichetta DESCRITTIVA ed esplorativa di quale asse domina in un lobo, dai
-    due indici separati. NON e' una diagnosi.
+def coverage_label(coverage_gap_frac, hi=0.5):
+    """Etichetta dell'asse COPERTURA (non morfometria, non occlusione), riferita a
+    una soglia esplorativa esplicita. NON e' una diagnosi."""
+    if coverage_gap_frac is None:
+        return 'dati insufficienti'
+    if coverage_gap_frac >= hi:
+        return f'copertura via aerea incompleta (≥{int(hi * 100)}% soglia espl.)'
+    return f'copertura via aerea adeguata (<{int(hi * 100)}% soglia espl.)'
 
-    ATTENZIONE (review GPT, blocker #2): l'asse 'mismatch' e' basato sulla distanza
-    voxel dai due alberi (delta = d_aereo - d_vaso). Un delta alto NON dimostra
-    un'occlusione: l'albero vascolare si segmenta piu' a fondo di quello aereo, quindi
-    il delta misura in gran parte l'ASIMMETRIA di profondita' di segmentazione (via
-    aerea non rappresentata / sotto-risoluzione), non l'occlusione. Un'occlusione
-    richiede evidenza CT positiva (revisione radiologica). Per questo l'etichetta e'
-    'via aerea non rappresentata', non 'occlusione'.
-    Analogamente l'asse BA NON distingue dilatazione bronchiale da assottigliamento
-    arterioso: etichetta neutra 'rapporto bronco-arteria elevato'.
 
-    Ritorna dict {mismatch_idx, ba_gt1_idx, prevalenza} con prevalenza in
-    {'via aerea non rappresentata','rapporto bronco-arteria elevato','mista',
-     'nessuna discordanza elevata','dati insufficienti'}."""
-    mm = stat.get('mismatch_frac')
-    dil = stat.get('ba_gt1_frac')
-    if mm is None and dil is None:
-        prev = 'dati insufficienti'
-    elif (mm or 0) >= mismatch_hi and (dil or 0) >= ba_hi:
-        prev = 'mista'
-    elif (mm or 0) >= mismatch_hi:
-        prev = 'via aerea non rappresentata'
-    elif (dil or 0) >= ba_hi:
-        prev = 'rapporto bronco-arteria elevato'
-    else:
-        prev = 'nessuna discordanza elevata'
-    return {'mismatch_idx': mm, 'ba_gt1_idx': dil, 'prevalenza': prev}
+def ba_label(ba_gt1_frac, hi=0.5):
+    """Etichetta dell'asse MORFOMETRICO bronco-arteria, riferita a una soglia
+    esplorativa esplicita. Un rapporto elevato NON distingue dilatazione bronchiale
+    da assottigliamento arterioso. NON e' una diagnosi."""
+    if ba_gt1_frac is None:
+        return 'dati insufficienti'
+    if ba_gt1_frac >= hi:
+        return f'rapporto bronco-arteria elevato (≥{int(hi * 100)}% dei rami)'
+    return f'rapporto bronco-arteria non elevato (<{int(hi * 100)}% dei rami)'

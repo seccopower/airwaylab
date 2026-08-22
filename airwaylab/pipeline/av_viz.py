@@ -85,7 +85,7 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <h1>Arterie e vene polmonari</h1>
 <p class="sub">{name} · maschere DL separate (TotalSegmentator) · le ancore <b>D</b>/<b>S</b> ruotano con l'anatomia</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
-  ⚠ <b>Esplorativo. Volumi della MASCHERA vascolare, non volume ematico né perfusione</b> (TC senza contrasto). Separazione A/V da verificare: <b>guarda prima questa vista come QC</b>. Il pruning / BV5 (piccoli vasi) è stato <b>ritirato</b>: la stima voxelwise da EDT non è valida (serve un metodo di calibro segmentale/scale-space).</div>
+  ⚠ <b>Esplorativo. Volumi della MASCHERA vascolare, non volume ematico né perfusione</b> (TC senza contrasto). I volumi <b>dipendono dalla segmentazione e dalla profondità raggiunta</b>, e il segmentatore può avere <b>sensibilità diversa per arterie e vene</b>. Separazione A/V da verificare: <b>guarda prima questa vista come QC</b>. Il pruning / BV5 (piccoli vasi) è stato <b>ritirato</b>: la stima voxelwise da EDT non è valida (serve un metodo di calibro segmentale/scale-space; sarebbe una misura nuova, non una calibrazione).</div>
 <div class="tiles">
   <div class="tile"><div class="k">Volume maschera arteriosa</div><div class="v">{av['arterie_ml']} <span class="u">ml</span></div></div>
   <div class="tile"><div class="k">Volume maschera venosa</div><div class="v">{av['vene_ml']} <span class="u">ml</span></div></div>

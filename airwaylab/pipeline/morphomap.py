@@ -74,17 +74,19 @@ for lb, s in per.items():
     s['prevalenza'] = classify_lobe(s['laa'], s['ds_share'])
 
 json.dump({'schema_version': SCHEMA_VERSION, 'status': 'exploratory',
-           'metrica': 'carico di bassa attenuazione inspiratoria (LAA<-950 HU) '
-                      'pesato per le quote di conduttanza modellata; NON ventilazione, '
-                      'perfusione, spazio morto ne distruzione',
+           'metrica': 'media della frazione LAA inspiratoria (<-950 HU) pesata per le '
+                      'quote di flusso del modello resistivo: w_i=q_i/sum(q), I=sum(w_i*LAA_i). '
+                      'I pesi sono allocazione relativa del modello nello scenario '
+                      'prespecificato, NON misure regionali di ventilazione. NON e\' '
+                      'ventilazione, perfusione, spazio morto ne distruzione',
            'laa_threshold_hu': LAA_HU, 'globale': glob, 'per_lobo': per},
           open('out/morphomap.json', 'w'), indent=1)
 
 print('Mappa strutturale multi-asse per lobo:')
-print(f"  carico LAA pesato per conduttanza (globale): {100 * glob['cond_to_destroyed']:.1f}%")
+print(f"  LAA inspiratoria pesata dal modello resistivo (globale): {100 * glob['cond_to_destroyed']:.1f}%")
 for lb, s in sorted(per.items(), key=lambda x: -(x[1]['ds_share'] or 0)):
-    print(f"  {lb:5s} cond {100 * s['cond_frac']:4.1f}%  LAA {100 * s['laa']:4.1f}%  "
-          f"f_tes {s['f_tissue']:.3f}  quota-carico {100 * (s['ds_share'] or 0):4.1f}%  {s['prevalenza']}")
+    print(f"  {lb:5s} q-flusso {100 * s['cond_frac']:4.1f}%  LAA {100 * s['laa']:4.1f}%  "
+          f"f_tes {s['f_tissue']:.3f}  quota-indice {100 * (s['ds_share'] or 0):4.1f}%  {s['prevalenza']}")
 
 # --- pagina ---
 lobi = [lb for lb in per]
@@ -150,29 +152,29 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
   .sw {{ width:14px; height:14px; border-radius:4px; display:inline-block; vertical-align:middle; margin-right:5px }}
 </style></head><body><div class="viz-root"><div class="wrap">
 <h1>Mappa strutturale multi-asse</h1>
-<p class="sub">{name} · conduttanza modellata (modello di flusso) <b>×</b> bassa attenuazione inspiratoria (LAA −950 HU), per lobo — assi tenuti separati</p>
+<p class="sub">{name} · quota di flusso simulato (modello resistivo) <b>×</b> bassa attenuazione inspiratoria (LAA −950 HU), per lobo — assi tenuti separati</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
-  ⚠ <b>Descrittore strutturale, NON funzionale.</b> È la media della <b>bassa attenuazione inspiratoria</b> (LAA &lt;−950 HU) pesata per le quote di <i>conduttanza modellata</i>. <b>Non</b> è ventilazione, perfusione, spazio morto né distruzione parenchimale. Su singola inspiratoria la bassa attenuazione può riflettere <b>iperinflazione o air-trapping non enfisematoso</b> (specie nell'asma; l'air-trapping si valuta sull'espiratoria). Dipende da soglia HU e volume inspiratorio: confronto tra lobi/pazienti solo a parità di protocollo. Le quote di conduttanza vengono dal modello di flusso e sono in gran parte da diametri imputati. Esplorativo.</div>
+  ⚠ <b>Descrittore strutturale, NON funzionale.</b> Indice = <b>media della frazione LAA inspiratoria pesata dalle quote di flusso del modello resistivo</b>: w<sub>i</sub> = q<sub>i</sub>/Σq,&nbsp; I = Σ w<sub>i</sub>·LAA<sub>i</sub>. I pesi w<sub>i</sub> rappresentano <b>l'allocazione relativa ottenuta dal modello nello scenario prespecificato</b> (flusso totale fisso, Pedley attivo) — <b>non</b> sono misure regionali di ventilazione. <b>Non</b> è ventilazione, perfusione, spazio morto né distruzione. La bassa attenuazione inspiratoria può riflettere <b>iperinflazione o altre cause non enfisematose</b>; <b>l'air-trapping non è identificabile da questa acquisizione e richiede dati espiratori</b>. Dipende da soglia HU e volume inspiratorio (confronto solo a parità di protocollo). Le quote q vengono dal modello e sono in gran parte da diametri imputati. Esplorativo.</div>
 <div class="tiles">
-  <div class="tile hero"><div class="k">Carico LAA pesato per conduttanza</div><div class="v">{head}<span class="u">%</span></div><div class="u">media LAA inspiratoria pesata per le quote di flusso modellato</div></div>
+  <div class="tile hero"><div class="k">LAA inspiratoria pesata dal modello resistivo</div><div class="v">{head}<span class="u">%</span></div><div class="u">I = Σ (q<sub>i</sub>/Σq)·LAA<sub>i</sub> — non una misura di ventilazione</div></div>
   <div class="tile"><div class="k">Bassa attenuazione inspiratoria (LAA −950)</div><div class="v">{round(100 * glob['laa_lung'], 1)}<span class="u">%</span></div><div class="u">media polmone</div></div>
   <div class="tile"><div class="k">f_tessuto medio polmone</div><div class="v">{glob['f_tissue_lung']}</div><div class="u">frazione non-aria</div></div>
 </div>
 <div class="card">
-  <h2>Quota per lobo del carico LAA pesato per conduttanza</h2>
-  <p class="note">Ogni barra = quota del lobo sul totale di (conduttanza × bassa attenuazione). Pesa insieme <b>quanto flusso modellato</b> riceve il lobo e <b>quanta bassa attenuazione</b> ha. <b>Colore = bassa attenuazione del lobo</b> (LAA): rosso ≥40%, arancio ≥25%, grigio sotto — su un polmone con LAA bassa le barre restano grigie anche se una quota è alta (le quote sommano comunque a 100%). Leggi l'altezza <i>col</i> valore globale in testa.</p>
+  <h2>Quota per lobo dell'indice (flusso simulato × LAA)</h2>
+  <p class="note">Ogni barra = quota del lobo sul totale di (quota di flusso simulato × bassa attenuazione). Pesa insieme <b>quanto flusso simulato</b> riceve il lobo e <b>quanta bassa attenuazione</b> ha. <b>Colore = bassa attenuazione del lobo</b> (LAA): rosso ≥40%, arancio ≥25%, grigio sotto — su un polmone con LAA bassa le barre restano grigie anche se una quota è alta (le quote sommano comunque a 100%). Leggi l'altezza <i>col</i> valore globale in testa.</p>
   <div id="ds"></div>
 </div>
 <div class="card">
   <h2>I due assi, affiancati per lobo</h2>
-  <p class="note">Blu = quota di conduttanza (flusso modellato). Rosso = bassa attenuazione del lobo (LAA). Le due barre sono descrittori distinti e non indipendenti; nessuna delle due è una misura funzionale.</p>
+  <p class="note">Blu = quota di flusso simulato del lobo (allocazione del modello resistivo). Rosso = bassa attenuazione del lobo (LAA). Le due barre sono descrittori distinti e non indipendenti; nessuna delle due è una misura funzionale.</p>
   <div id="grp"></div>
-  <div class="legend"><span><span class="sw" style="background:#2a78d6"></span>conduttanza (quota %)</span>
+  <div class="legend"><span><span class="sw" style="background:#2a78d6"></span>quota flusso simulato (%)</span>
     <span><span class="sw" style="background:#c0392b"></span>bassa attenuazione LAA (%)</span></div>
 </div>
 <div class="card">
   <h2>Tabella regionale</h2>
-  <table><thead><tr><th>Lobo</th><th>conduttanza (ml/s)</th><th>quota cond. %</th><th>LAA %</th><th>f_tessuto</th><th>quota carico %</th><th>pattern</th></tr></thead>
+  <table><thead><tr><th>Lobo</th><th>flusso sim. (ml/s)</th><th>quota flusso sim. %</th><th>LAA %</th><th>f_tessuto</th><th>quota indice %</th><th>etichetta (soglie espl.)</th></tr></thead>
   <tbody>{rows}</tbody></table>
 </div>
 </div></div>
