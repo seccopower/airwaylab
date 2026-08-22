@@ -108,10 +108,9 @@ for b in tree['branches']:
         # con chiavi a null anche senza lume CT (dataset non censurato). ---
         rec = blank_section_record()
         s_i = float(s_cum[i]) if i < len(s_cum) else 0.0
-        jmargin = max(2.0, float(radii[i]))          # ~1 raggio dalla giunzione
+        d_junc = round(min(s_i, s_tot - s_i), 2)
         rec.update(branch_id=b['id'], aid=b.get('aid'), gen=b['gen'], i=int(i),
-                   s_mm=round(s_i, 2),
-                   near_junction=bool(min(s_i, s_tot - s_i) < jmargin))
+                   s_mm=round(s_i, 2), distance_to_junction_mm=d_junc)
         # centro comune per CT e maschera: il CT-ricentrato cadj (rimedio #1)
         if sec is not None:
             cadj = (path[i] + (sec['shift'][0] / ISO) * sec['u']
@@ -124,10 +123,16 @@ for b in tree['branches']:
             cadj = path[i]
             rec.update(ct_available=False, ct_reportable=False)
         ms = mask_section(maskf, cadj, t, ISO, radii[i])
+        # margine giunzione da raggio AREA-equivalente (non EDT/semiasse-minore,
+        # che sottostima nelle vie eccentriche — rimedio review #2)
+        r_eff = (ms['d_eq'] / 2.0) if ms.get('d_eq') else float(radii[i])
+        rec['near_junction'] = bool(d_junc < max(2.0, r_eff))
         rec.update(d_mask_eq=_r(ms['d_eq']), d_mask_min=_r(ms['d_min']),
                    d_mask_maj=_r(ms['d_maj']), aspect=_r(ms['aspect']),
                    solidity=_r(ms.get('solidity'), 3),
                    centroid_offset_mm=_r(ms.get('centroid_offset_mm')),
+                   component_centroid=([round(float(x), 2) for x in ms['center_used']]
+                                       if ms.get('center_in_mask') else None),
                    center_in_mask=ms['center_in_mask'],
                    touches_border=ms['touches_border'],
                    n_components=ms['n_components'],
@@ -186,22 +191,20 @@ for b in tree['branches']:
     b['d_mean'] = round(d_mean, 2)
     b['d_min'] = round(d_min, 2)
     b['wall'] = round(wall, 2) if wall else None
-    # Step 1 (solo audit, gate invariato). Flag salto d'area (biforcazione/
-    # transizione) sulle sezioni valide, poi aggregazione con popolazioni
-    # OMOLOGHE (rimedi review #2/#3): la morfometria usa mask_valid (valida, non
-    # giunzionale, senza salto d'area); ct_mask_ratio/overshoot solo su
-    # paired_valid (mask_valid AND CT reportabile), come mediana dei rapporti
-    # per-sezione. Il dataset completo resta nel JSON.
-    v_eq = [r['d_mask_eq'] for r in brec
-            if r.get('valid_mask_section') and not r.get('near_junction')
-            and r.get('d_mask_eq')]
-    med_eq = float(np.median(v_eq)) if v_eq else None
-    for r in brec:
-        r['area_jump'] = bool(
-            med_eq and r.get('d_mask_eq')
-            and (r['d_mask_eq'] > 1.3 * med_eq or r['d_mask_eq'] < 0.77 * med_eq))
+    # Step 1 (solo audit, gate invariato). NESSUNA censura morfologica con
+    # soglie non validate: si esporta solo un rapporto d'area LOCALE (vs le
+    # sezioni adiacenti dello stesso ramo) come ingrediente grezzo; l'esclusione
+    # dalle sintesi e' esclusivamente topologica (near_junction). L'aggregazione
+    # separa le popolazioni omologhe (rimedio review #3).
+    eqs = [r.get('d_mask_eq') for r in brec]
+    for k, r in enumerate(brec):
+        neigh = [eqs[j] for j in (k - 2, k - 1, k + 1, k + 2)
+                 if 0 <= j < len(eqs) and eqs[j]]
+        r['local_area_ratio'] = (round(r['d_mask_eq'] / float(np.median(neigh)), 3)
+                                 if r.get('d_mask_eq') and neigh else None)
     summ = branch_mask_summary(brec)
     b.update(summ)
+    b['n_sez_paired_valide'] = summ['n_sez_paired_radial']   # colonna CSV stabile
     section_records.extend(brec)
     # derived indices when wall available
     if wall:

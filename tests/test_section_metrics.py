@@ -227,8 +227,9 @@ def test_connected_dumbbell_has_low_solidity():
            ((xx * iso > 24.0) & (xx * iso < 42.0))
     m = np.clip(a + b + np.repeat(neck[None], 5, axis=0), 0, 1).astype(np.float32)
     c = np.array([2.0, 33.0 / iso, 24.0 / iso])
-    s = mask_section(m, c, T_Z, iso, r_est_mm=D / 2, expand=False)
+    s = mask_section(m, c, T_Z, iso, r_est_mm=D / 2)   # ROI espansa (default)
     assert s['n_components'] == 1                     # connessa dal collo
+    assert s['valid_mask_section'] is True            # centro in maschera, non troncata
     assert s['solidity'] < 0.85                       # ma NON convessa (manubrio)
     # confronto: un cerchio singolo ha solidity alta
     m1 = _cylinder((5, 220, 220), iso, 33.0, 33.0, D / 2, D / 2)
@@ -272,25 +273,26 @@ def test_branch_summary_uses_homologous_populations():
         r = blank_section_record(); r.update(kw); return r
 
     recs = [
-        # paired valida: CT reportabile + maschera valida
+        # paired completa: CT reportabile + maschera valida + raggi validi
         mk(valid_mask_section=True, ct_available=True, ct_reportable=True,
            d_eq_ct=20.0, d_mask_eq=19.0, d_mask_min=13.0, d_mask_maj=25.0,
-           aspect=0.52, radial={'frac_over': {'0.5': 0.4}}),
+           aspect=0.52, radial={'frac_valid': 1.0, 'frac_over': {'0.5': 0.4}}),
         # maschera valida ma CT NON reportabile: entra in morfometria, NON in ratio
         mk(valid_mask_section=True, ct_available=True, ct_reportable=False,
            d_eq_ct=99.0, d_mask_eq=18.0, d_mask_min=12.0, d_mask_maj=24.0,
-           aspect=0.5, radial={'frac_over': {'0.5': 0.99}}),
+           aspect=0.5, radial={'frac_valid': 1.0, 'frac_over': {'0.5': 0.99}}),
+        # diam paired ma radial con pochi raggi validi: conta nel ratio, NON in overshoot
+        mk(valid_mask_section=True, ct_available=True, ct_reportable=True,
+           d_eq_ct=21.0, d_mask_eq=20.0, d_mask_min=13.0, d_mask_maj=26.0,
+           aspect=0.5, radial={'frac_valid': 0.1, 'frac_over': {'0.5': 0.95}}),
         # giunzionale: esclusa da tutto
         mk(valid_mask_section=True, near_junction=True, ct_available=True,
            ct_reportable=True, d_eq_ct=5.0, d_mask_eq=5.0,
-           radial={'frac_over': {'0.5': 0.9}}),
-        # salto d'area: esclusa
-        mk(valid_mask_section=True, area_jump=True, ct_available=True,
-           ct_reportable=True, d_eq_ct=40.0, d_mask_eq=40.0,
-           radial={'frac_over': {'0.5': 0.9}}),
+           radial={'frac_valid': 1.0, 'frac_over': {'0.5': 0.9}}),
     ]
     s = branch_mask_summary(recs)
-    assert s['n_sez_mask_valide'] == 2          # le due valide non-giunz/non-salto
-    assert s['n_sez_paired_valide'] == 1        # solo quella CT reportabile
-    assert abs(s['ct_mask_ratio'] - 20.0 / 19.0) < 2e-3   # mediana dei rapporti (arrot.)
-    assert s['overshoot_frac'] == 0.4           # solo la paired, non lo 0.99
+    assert s['n_sez_mask_valide'] == 3          # le tre valide non-giunzionali
+    assert s['n_sez_paired_diam'] == 2          # due CT reportabili
+    assert s['n_sez_paired_radial'] == 1        # solo una con raggi sufficienti
+    assert abs(s['ct_mask_ratio'] - np.median([20/19, 21/20])) < 2e-3
+    assert s['overshoot_frac'] == 0.4           # solo la radial valida, non 0.95/0.99

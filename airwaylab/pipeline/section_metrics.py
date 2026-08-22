@@ -11,9 +11,16 @@ come pulito quando non lo è:
   d_min/d_maj  Feret minimo/massimo       larghezza minima (resolution floor) e asse maggiore
   center_in_mask                          il centro cade dentro la maschera?
   touches_border                          la componente tocca il bordo della ROI (area sottostimata)
-  n_components                            componenti nel piano (biforcazione se >1)
-  valid_mask_section                      center_in_mask AND not touches_border AND n_components==1
+  n_components                            componenti nel piano (audit; NON usato per validare)
+  solidity                                area/convex-hull della componente scelta (bassa = bilobata)
+  valid_mask_section                      center_in_mask AND not touches_border
   mask_radii   distanza radiale alla parete, interpolata; NaN se nessun attraversamento
+
+Le biforcazioni NON si censurano con soglie morfologiche non validate: si
+esportano gli ingredienti grezzi (solidity, distance_to_junction_mm,
+local_area_ratio) e si escludono dalle SINTESI solo le sezioni topologicamente
+prossime alla giunzione. Un futuro `suspected_bifurcation` combinera' bassa
+solidity e aumento locale d'area DOPO calibrazione annotata.
 
 Puro (numpy + scipy.ndimage). Campionamento trilineare (order=1) + soglia 0.5:
 niente nearest-neighbor (aree a scalini, bias d'orientamento).
@@ -227,11 +234,12 @@ def overshoot_fraction(ct_inner_mm, mask_radii_mm, margin_mm=0.3):
 # --- schema fisso del record di sezione (JSON versionato, valori null) --------
 SCHEMA_VERSION = 1
 SECTION_KEYS = (
-    'branch_id', 'aid', 'gen', 'i', 's_mm',
+    'branch_id', 'aid', 'gen', 'i', 's_mm', 'distance_to_junction_mm',
     'ct_available', 'ax_ratio', 'ct_reportable', 'd_eq_ct',
     'd_mask_eq', 'd_mask_min', 'd_mask_maj', 'aspect', 'solidity',
-    'center_in_mask', 'centroid_offset_mm', 'touches_border', 'n_components',
-    'near_junction', 'area_jump', 'valid_mask_section', 'radial',
+    'local_area_ratio', 'center_in_mask', 'component_centroid',
+    'centroid_offset_mm', 'touches_border', 'n_components',
+    'near_junction', 'valid_mask_section', 'radial',
 )
 
 
@@ -246,22 +254,30 @@ def _med(vals):
     return round(float(np.median(vals)), 3) if vals else None
 
 
+RADIAL_MIN_VALID = 0.5     # frazione minima di raggi validi per usare l'overshoot
+
+
 def branch_mask_summary(records):
-    """Aggrega le metriche di ramo da record di sezione, separando popolazioni
-    OMOLOGHE (rimedio review): la morfometria di maschera usa le sezioni
-    `mask_valid` (valide, non giunzionali, senza salto d'area); il confronto
-    CT/maschera (ct_mask_ratio, overshoot) usa SOLO le `paired_valid`
-    (mask_valid AND CT disponibile e reportabile). ct_mask_ratio e' la mediana
-    dei RAPPORTI per-sezione, non un rapporto di mediane su insiemi diversi."""
+    """Aggrega le metriche di ramo separando popolazioni OMOLOGHE:
+      - `mask_valid`   : sezioni valide e NON giunzionali -> morfometria di
+                         maschera. NESSUNA censura morfologica (no soglie
+                         d'area non validate): l'esclusione e' solo topologica.
+      - `paired_diam`  : mask_valid AND CT reportabile con entrambi i diametri
+                         -> ct_mask_ratio (mediana dei RAPPORTI per-sezione).
+      - `paired_radial`: paired_diam AND confronto radiale con abbastanza raggi
+                         validi (radial.frac_valid >= RADIAL_MIN_VALID)
+                         -> overshoot_frac (rimedio: non contare radial vuoti)."""
     mask_valid = [r for r in records if r.get('valid_mask_section')
-                  and not r.get('near_junction') and not r.get('area_jump')]
-    paired = [r for r in mask_valid
-              if r.get('ct_available') and r.get('ct_reportable')
-              and r.get('d_eq_ct') and r.get('d_mask_eq')
-              and r.get('radial') is not None]
-    ratios = [r['d_eq_ct'] / r['d_mask_eq'] for r in paired]
-    overs = [r['radial']['frac_over']['0.5'] for r in paired
-             if r['radial'].get('frac_over', {}).get('0.5') is not None]
+                  and not r.get('near_junction')]
+    paired_diam = [r for r in mask_valid
+                   if r.get('ct_available') and r.get('ct_reportable')
+                   and r.get('d_eq_ct') and r.get('d_mask_eq')]
+    paired_radial = [r for r in paired_diam
+                     if r.get('radial') is not None
+                     and r['radial'].get('frac_valid', 0.0) >= RADIAL_MIN_VALID
+                     and r['radial'].get('frac_over', {}).get('0.5') is not None]
+    ratios = [r['d_eq_ct'] / r['d_mask_eq'] for r in paired_diam]
+    overs = [r['radial']['frac_over']['0.5'] for r in paired_radial]
     return {
         'd_mask_eq': _med([r['d_mask_eq'] for r in mask_valid]),
         'd_mask_min': _med([r['d_mask_min'] for r in mask_valid]),
@@ -270,5 +286,6 @@ def branch_mask_summary(records):
         'ct_mask_ratio': round(float(np.median(ratios)), 3) if ratios else None,
         'overshoot_frac': round(float(np.median(overs)), 3) if overs else None,
         'n_sez_mask_valide': len(mask_valid),
-        'n_sez_paired_valide': len(paired),
+        'n_sez_paired_diam': len(paired_diam),
+        'n_sez_paired_radial': len(paired_radial),
     }
