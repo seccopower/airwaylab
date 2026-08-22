@@ -8,9 +8,9 @@ import SimpleITK as sitk
 from scipy import ndimage
 import json, csv
 from lumen import analyze_section, pca_tangent, perp_basis
-from section_metrics import (MASK_LEVEL, SCHEMA_VERSION, blank_section_record,
-                             branch_mask_summary, mask_ray_radii, mask_section,
-                             radial_delta_stats)
+from section_metrics import (MASK_LEVEL, RADIAL_MIN_VALID, SCHEMA_VERSION,
+                             blank_section_record, branch_mask_summary,
+                             mask_ray_radii, mask_section, radial_delta_stats)
 
 tree = json.load(open('out/tree.json'))
 ISO = tree['iso']
@@ -200,11 +200,12 @@ for b in tree['branches']:
     for k, r in enumerate(brec):
         neigh = [eqs[j] for j in (k - 2, k - 1, k + 1, k + 2)
                  if 0 <= j < len(eqs) and eqs[j]]
-        r['local_area_ratio'] = (round(r['d_mask_eq'] / float(np.median(neigh)), 3)
-                                 if r.get('d_mask_eq') and neigh else None)
+        # rapporto di DIAMETRI vs le sezioni adiacenti (nome onesto: e' un
+        # rapporto di diametri, non di aree — rimedio review #1)
+        r['local_diameter_ratio'] = (round(r['d_mask_eq'] / float(np.median(neigh)), 3)
+                                     if r.get('d_mask_eq') and neigh else None)
     summ = branch_mask_summary(brec)
-    b.update(summ)
-    b['n_sez_paired_valide'] = summ['n_sez_paired_radial']   # colonna CSV stabile
+    b.update(summ)   # espone n_sez_paired_diam E n_sez_paired_radial (no nome ambiguo)
     section_records.extend(brec)
     # derived indices when wall available
     if wall:
@@ -227,6 +228,9 @@ section_artifact = {
     'ray_step_mm': 0.25,
     'max_ax_ratio': 1.45,
     'overshoot_margins_mm': [0.3, 0.5, 1.0],
+    'radial_min_valid': RADIAL_MIN_VALID,
+    'local_window_sections': 2,             # +/-2 sezioni per local_diameter_ratio
+    'component_centroid_space': 'voxel ZYX (volume croppato al bbox dell\'albero)',
     'airwaylab_version': _seg_info.get('airwaylab_version'),
     'backend': _seg_info.get('backend'),
     'n_sezioni': len(section_records),

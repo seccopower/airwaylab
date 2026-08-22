@@ -237,7 +237,7 @@ SECTION_KEYS = (
     'branch_id', 'aid', 'gen', 'i', 's_mm', 'distance_to_junction_mm',
     'ct_available', 'ax_ratio', 'ct_reportable', 'd_eq_ct',
     'd_mask_eq', 'd_mask_min', 'd_mask_maj', 'aspect', 'solidity',
-    'local_area_ratio', 'center_in_mask', 'component_centroid',
+    'local_diameter_ratio', 'center_in_mask', 'component_centroid',
     'centroid_offset_mm', 'touches_border', 'n_components',
     'near_junction', 'valid_mask_section', 'radial',
 )

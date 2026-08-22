@@ -225,10 +225,10 @@ def test_split_reportable_invariant_and_csv_cardinality():
             else:
                 assert clin is None and raw == v
 
-    assert len(CSV_COLUMNS) == 31            # +qc_note +7 metriche di maschera
+    assert len(CSV_COLUMNS) == 32            # +qc_note +8 metriche di maschera
     for col in ('qc_note', 'd_maschera_eq_mm', 'd_maschera_min_mm',
                 'd_maschera_maj_mm', 'aspect_mask', 'ct_mask_ratio',
-                'overshoot_frac', 'n_sez_paired_valide'):
+                'overshoot_frac', 'n_sez_paired_diam', 'n_sez_paired_radial'):
         assert col in CSV_COLUMNS
     dummy = {'id': 'br000', 'name': 'trachea', 'gen': 0, 'length': 100.0}
     assert len(csv_row(dummy)) == len(CSV_COLUMNS)
