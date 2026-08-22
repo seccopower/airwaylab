@@ -29,6 +29,7 @@ TAIL_STEPS = [
     ("vtree.py", "vascular graph"),
     ("pair.py", "bronchus-artery pairing (BA ratio)"),
     ("dual.py", "airway-vascular mismatch map"),
+    ("vasculature.py", "artery/vein analysis (pruning, A/V) — optional"),
     ("plugs.py", "mucus plug candidates"),
     ("cpr.py", "straightened CPR panels"),
     ("viz.py", "report data"),
@@ -121,13 +122,24 @@ def cmd_run(args):
     # the same process, flags removed when not applicable
     run_env = {k: v for k, v in os.environ.items()
                if k not in ("AIRWAYLAB_SPACING", "AIRWAYLAB_REFINED",
-                            "AIRWAYLAB_TIGHT_SMALL")}
+                            "AIRWAYLAB_TIGHT_SMALL", "AIRWAYLAB_ARTERIES",
+                            "AIRWAYLAB_VEINS")}
     if args.spacing:
         run_env["AIRWAYLAB_SPACING"] = str(args.spacing)
     if refined:
         run_env["AIRWAYLAB_REFINED"] = "1"
     if tight:
         run_env["AIRWAYLAB_TIGHT_SMALL"] = "1"
+    # maschere arteria/vena: accanto al --mask (stesso run TotalSegmentator) o
+    # da flag espliciti. Opzionali: lo step vascolare si salta se assenti.
+    if mask:
+        _mdir = os.path.dirname(mask)
+        _art = args.arteries or os.path.join(_mdir, "lung_arteries.nii.gz")
+        _vein = args.veins or os.path.join(_mdir, "lung_veins.nii.gz")
+        if os.path.exists(_art):
+            run_env["AIRWAYLAB_ARTERIES"] = os.path.abspath(_art)
+        if os.path.exists(_vein):
+            run_env["AIRWAYLAB_VEINS"] = os.path.abspath(_vein)
     name = args.name or os.path.basename(src).replace(".nii.gz", "").replace(".nii", "")
     outroot = os.path.abspath(args.outdir or os.getcwd())
     work = os.path.join(outroot, name + "_work")
@@ -216,6 +228,12 @@ def main():
     pr.add_argument("--refine", action="store_true",
                     help="sub-voxel centerline refinement + B-spline also with the "
                     "built-in segmentation (default off; always on with --mask)")
+    pr.add_argument("--arteries", default=None, metavar="ARTERY_MASK",
+                    help="pulmonary artery mask (TotalSegmentator lung_arteries.nii.gz); "
+                    "default: looked up next to --mask. Enables the exploratory "
+                    "artery/vein analysis (pruning, A/V).")
+    pr.add_argument("--veins", default=None, metavar="VEIN_MASK",
+                    help="pulmonary vein mask (lung_veins.nii.gz); default next to --mask")
     pr.set_defaults(func=cmd_run)
 
     pv = sub.add_parser("version", help="print version")

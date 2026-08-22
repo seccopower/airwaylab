@@ -13,7 +13,9 @@ import numpy as np
 import SimpleITK as sitk
 from scipy import ndimage
 from PIL import Image
-import json, io, base64
+import json, io, base64, os
+
+from discordance import classify_lobe, lobe_of, regional_summary
 
 info = json.load(open('out/seg_info.json'))
 ISO = info['iso']
@@ -69,6 +71,82 @@ m = {'d_aw_med_mm': round(float(np.median(va)), 1),
 print(m)
 json.dump(m, open('out/dual_metrics.json', 'w'), indent=1)
 
+# --- discordanza REGIONALE per lobo + decomposizione (esplorativa) -----------
+# asse OCCLUSIONE: frazione di voxel del lobo con delta > soglia (parenchima
+# vascolarizzato ma lontano da via aerea); asse DILATAZIONE: frazione di bronchi
+# del lobo con BA ratio > 1 (via piu' larga dell'arteria). Tenuti SEPARATI.
+try:
+    lab = sitk.GetArrayFromImage(
+        sitk.ReadImage('out/territory_labels_ds.nii.gz')).astype(np.int32)
+    lab = lab[:shp[0], :shp[1], :shp[2]]
+    tindex = json.load(open('out/territory_index.json'))
+    pairing = json.load(open('out/pairing.json')) if os.path.exists('out/pairing.json') else {}
+    tm = json.load(open('out/tree_measured.json'))
+    by_id = {b['id']: b for b in tm['branches']}
+    kids = {}
+    for _b in tm['branches']:
+        kids.setdefault(_b['u'], []).append(_b)
+    parent = {}
+    for _p in tm['branches']:
+        for _c in kids.get(_p['v'], []):
+            parent[_c['id']] = _p['id']
+
+    # etichetta voxel -> lobo (le etichette 0/background restano fuori)
+    max_lab = int(lab.max())
+    lut = np.array([''] * (max_lab + 1), dtype=object)
+    for k, v in tindex.items():
+        ik = int(k)
+        if ik <= max_lab:
+            lut[ik] = v.get('lobe', 'CENTRAL')
+    delta_by_lobe = {}
+    for lb in set(lut) - {''}:
+        labs = [i for i in range(1, max_lab + 1) if lut[i] == lb]
+        mask_lb = np.isin(lab, labs) & np.isfinite(delta)
+        delta_by_lobe[lb] = delta[mask_lb]
+
+    ba_by_lobe = {}
+    for aid_branch, p in pairing.items():
+        lb = lobe_of(aid_branch, by_id, parent)
+        ba_by_lobe.setdefault(lb, []).append(p.get('ba'))
+
+    reg = regional_summary(delta_by_lobe, ba_by_lobe)
+    regional = {lb: {**reg[lb], **classify_lobe(reg[lb])} for lb in reg}
+
+    # --- nuvola 3D del delta nel frame di DISPLAY dell'albero (per dual_viz) --
+    # voxel DS -> voxel pieno (*DS) -> coord ritagliate (-off) -> mm (*ISO).
+    off = [tm['bbox'][i][0] for i in range(3)] if 'bbox' in tm else [0, 0, 0]
+    zz, yy, xx = np.nonzero(lung & np.isfinite(delta))
+    if len(zz):
+        stride = max(1, len(zz) // 25000)      # tetto ~25k punti
+        sel = slice(None, None, stride)
+        zz, yy, xx = zz[sel], yy[sel], xx[sel]
+        dv = delta[zz, yy, xx]
+        cloud = {
+            'x': [round(float((x * DS - off[2]) * ISO), 1) for x in xx],
+            'y': [round(float((y * DS - off[1]) * ISO), 1) for y in yy],
+            'z': [round(float((z * DS - off[0]) * ISO), 1) for z in zz],
+            'delta': [round(float(d), 1) for d in dv],
+        }
+    else:
+        cloud = {'x': [], 'y': [], 'z': [], 'delta': []}
+    out_reg = {
+        'status': 'exploratory',
+        'nota': 'indici esplorativi, non validati; la mappa voxel ha bias di '
+                'visibilita\' bronchi/vasi (leggere il confronto TRA lobi). '
+                'occlusione_idx = frazione voxel con delta>10mm; dilatazione_idx '
+                '= frazione bronchi con BA>1. Assi separati, nessuna diagnosi.',
+        'mismatch_mm': 10.0, 'ba_dilatazione': 1.0,
+        'per_lobo': regional,
+        'cloud': cloud,
+    }
+    json.dump(out_reg, open('out/discordance_regional.json', 'w'), indent=1)
+    print('discordanza regionale per lobo:')
+    for lb, s in sorted(regional.items(), key=lambda x: -(x[1]['mismatch_frac'] or 0)):
+        print(f"  {lb:8s} mismatch {s['mismatch_frac']} · BA>1 {s['ba_gt1_frac']}"
+              f" · {s['prevalenza']}")
+except FileNotFoundError as e:
+    print('discordanza regionale saltata (manca', e.filename, ')')
+
 # mappa coronale: mediana del delta lungo y, colormap divergente blu-grigio-rosso
 with np.errstate(all='ignore'):
     cor = np.nanmedian(delta, axis=1)
@@ -84,11 +162,27 @@ mlo = t < 0.5
 img[mlo] = c_blue * (1 - t[mlo, None] * 2) + c_gray * (t[mlo, None] * 2)
 img[~mlo] = c_gray * (2 - t[~mlo, None] * 2) + c_red * (t[~mlo, None] * 2 - 1)
 img[~has] = [252, 252, 251]
-# contorno albero aereo per riferimento
-aw_proj = aw_ds.max(axis=1)
-img[aw_proj] = [11, 11, 11]
-im = Image.fromarray(np.flipud(img).astype(np.uint8))
-im = im.resize((im.width * DS, im.height * DS), Image.NEAREST)
+# --- resa PIU' DEFINITA: campo colore upscalato BILINEARE (gradiente liscio),
+# contorno polmone e albero aereo disegnati NITIDI sopra (upscale nearest) ---
+scale = DS * 2
+H, W = cor.shape
+
+
+def _up_nn(mask_bool):
+    im_m = Image.fromarray((np.flipud(mask_bool) * 255).astype(np.uint8))
+    return np.array(im_m.resize((W * scale, H * scale), Image.NEAREST)) > 127
+
+
+col = Image.fromarray(np.flipud(img).astype(np.uint8))
+col = col.resize((W * scale, H * scale), Image.BILINEAR)
+arr = np.array(col).astype(np.float32)
+# contorno del polmone (riferimento anatomico)
+lung_edge = _up_nn(lung.max(axis=1))
+lung_edge = lung_edge ^ ndimage.binary_erosion(lung_edge, iterations=max(1, scale // 2))
+arr[lung_edge] = [150, 149, 144]
+# albero aereo nitido sopra
+arr[_up_nn(aw_ds.max(axis=1))] = [11, 11, 11]
+im = Image.fromarray(arr.astype(np.uint8))
 im.save('out/dual_map.png')
 buf = io.BytesIO(); im.save(buf, format='PNG', optimize=True)
 open('out/dual_b64.txt', 'w').write('data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode())

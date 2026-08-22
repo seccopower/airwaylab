@@ -89,6 +89,36 @@ if n >= 8:
     print(f'Murray: territorio ~ calibro^{slope:.2f} (R2 {r2:.2f}, n={n}) — teoria: ^3')
 
 json.dump({k: round(v, 1) for k, v in terr.items()}, open('out/territories.json', 'w'))
+
+# --- mappa etichette per-voxel (DS grid) + indice etichetta->ramo/lobo -------
+# serve alla discordanza REGIONALE (dual.py): aggregare delta e BA per lobo.
+sitk.WriteImage(sitk.GetImageFromArray(assigned.astype(np.int32)),
+                'out/territory_labels_ds.nii.gz')
+parent = {}
+for _p in branches:
+    for _c in children.get(_p['v'], []):
+        parent[_c['id']] = _p['id']
+by_id = {b['id']: b for b in branches}
+LOBE_AID = ('RUL', 'RML', 'RLL', 'LUL', 'LING', 'LLL')
+
+
+def _lobe_of(bid):
+    cur, seen = bid, set()
+    for _ in range(60):
+        if cur is None or cur in seen:
+            break
+        seen.add(cur)
+        aid = by_id.get(cur, {}).get('aid')
+        if aid in LOBE_AID:
+            return aid
+        cur = parent.get(cur)
+    return 'CENTRAL'
+
+
+terr_index = {str(li): {'branch_id': leaves[li - 1]['id'],
+                        'lobe': _lobe_of(leaves[li - 1]['id'])}
+              for li in range(1, len(leaves) + 1)}
+json.dump(terr_index, open('out/territory_index.json', 'w'))
 json.dump({'slope': slope and round(slope, 3), 'r2': r2 and round(r2, 3), 'n': n,
            'assigned_l': round(tot / 1000, 3)}, open('out/murray.json', 'w'))
 print('saved territories.json + murray.json')
