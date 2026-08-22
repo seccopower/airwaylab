@@ -136,13 +136,16 @@ try:
     out_reg = {
         'status': 'exploratory',
         'nota': 'due assi DISTINTI e non combinati, esplorativi, non validati, non '
-                'diagnosi. coverage_gap_frac = frazione di parenchima vicino a un vaso '
-                'ma NON coperto dalla maschera delle vie aeree: e\' COPERTURA '
-                'algoritmica (via aerea non rappresentata), NON occlusione ne\' '
-                'morfometria; la via non rappresentata resta missing, non entra come '
-                'diametro zero. ba_gt1_frac = frazione di bronchi con BA>1, solo su '
-                'coppie rappresentate e reportabili (NON distingue dilatazione da '
-                'assottigliamento arterioso). I due assi non vanno fusi.',
+                'diagnosi. coverage_gap_frac = frazione di gap della maschera aerea nei '
+                'dintorni della maschera vascolare: numeratore = voxel di parenchima con '
+                '(d_aereo - d_vascolare) > soglia; DENOMINATORE = voxel di parenchima del '
+                'lobo (campo n_voxel); DISTANZA di ricerca = soglia Delta = mismatch_mm. '
+                'E\' COPERTURA algoritmica (via aerea non rappresentata), NON occlusione '
+                'ne\' morfometria; la via non rappresentata resta missing, non entra come '
+                'diametro zero; dipende dalla profondita\' relativa delle due segmentazioni. '
+                'ba_gt1_frac = frazione di bronchi con BA>1, solo su coppie rappresentate e '
+                'reportabili (NON distingue dilatazione da assottigliamento arterioso). '
+                'I due assi non vanno fusi.',
         'mismatch_mm': 10.0, 'ba_dilatazione': 1.0,
         'per_lobo': regional,
         'cloud': cloud,

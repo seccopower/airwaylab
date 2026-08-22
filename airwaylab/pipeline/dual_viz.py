@@ -16,6 +16,7 @@ import numpy as np
 data = json.load(open('out/map_data.json'))
 reg = json.load(open('out/discordance_regional.json')) if os.path.exists('out/discordance_regional.json') else {'per_lobo': {}}
 per_lobo = reg.get('per_lobo', {})
+MM_THR = reg.get('mismatch_mm', 10.0)   # distanza di ricerca (soglia Delta) da esporre
 cloud = reg.get('cloud', {'x': [], 'y': [], 'z': [], 'delta': []})
 coronal_png = data.get('meta', {}).get('dual_png')
 branches = data['branches']
@@ -142,7 +143,7 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 {coronal_card}
 <div class="card">
   <h2>Per lobo: DUE assi distinti (non combinati)</h2>
-  <p class="note"><b>Blu = copertura</b>: % di parenchima vicino a un vaso ma non coperto dalla maschera delle vie aeree (via aerea <b>non rappresentata</b> — risoluzione/profondità di segmentazione/errore/interruzione, indistinguibili; <b>non</b> occlusione, <b>non</b> morfometria). <b>Arancio = morfometria BA&gt;1</b>: % di bronchi (solo coppie reportabili) più larghi dell'arteria (non distingue dilatazione da assottigliamento arterioso). I due assi misurano cose diverse e <b>non</b> vanno fusi. Confronta i lobi tra loro.</p>
+  <p class="note"><b>Blu = gap di copertura</b>: frazione di gap della maschera aerea nei dintorni della maschera vascolare — voxel di parenchima con (distanza dall'albero aereo − distanza dal vaso) oltre la soglia Δ = {MM_THR:.0f} mm, sul denominatore dei voxel di parenchima del lobo. È via aerea <b>non rappresentata</b> (risoluzione/profondità di segmentazione/errore/interruzione, indistinguibili; <b>non</b> occlusione, <b>non</b> morfometria) e dipende dalla profondità relativa delle due segmentazioni. <b>Arancio = morfometria BA&gt;1</b>: % di bronchi (solo coppie reportabili) più larghi dell'arteria (non distingue dilatazione da assottigliamento arterioso). I due assi misurano cose diverse e <b>non</b> vanno fusi.</p>
   <div id="bars"></div>
 </div>
 <div class="card">
