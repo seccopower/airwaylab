@@ -1,5 +1,7 @@
 # AirwayLab
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21963989.svg)](https://doi.org/10.5281/zenodo.21963989)
+
 **Transparent quantitative CT analysis of the airways.**
 
 AirwayLab segments the bronchial tree and the pulmonary vessels from a chest CT,
@@ -11,29 +13,6 @@ browser — no server, no license, no black box.
 > **Research software.** AirwayLab is not a medical device and must not be used
 > for clinical decision-making.
 
-## A look at the output
-
-The whole analysis lands in one self-contained HTML report. A few of its
-derived views (anonymized example case):
-
-**Airway tree** — the segmented bronchial tree; the caliber-reportable core is
-highlighted, the deep tree kept for topology and territories is shown darker.
-
-![Segmented airway tree](docs/img/airway_tree.png)
-
-**Caliber by generation** and **territory vs caliber** (Murray-law fit) — every
-per-branch value is measured on centerline-perpendicular sections.
-
-![Lumen caliber per generation](docs/img/caliber_by_generation.png)
-
-![Served territory vs lumen caliber](docs/img/territory_vs_caliber.png)
-
-**Exploratory 1D air-flow model** — a resistance network solved on the measured
-tree, colored by cumulative pressure with per-territory ventilation; a
-standalone simulation, clearly marked as such, never a clinical measurement.
-
-![Exploratory air-flow simulation](docs/img/flow_model.png)
-
 ## Why another airway tool?
 
 Commercial platforms are validated and powerful, but they are closed: you get a
@@ -43,10 +22,9 @@ wall value links to its measured sections — counts of attempted/accepted
 sections are reported — and each branch shows a verification section with the
 lumen boundary in blue and the outer wall boundary in orange, drawn only in
 sectors where the wall borders aerated parenchyma; aggregate indices are
-computed from these audited per-branch values). Automatic QC classifies every
-branch (`ok` / `stump` / `oblique` / `no-wall` / `unstable`), the reader can
-exclude any branch with one click, and the exclusion list is exportable as part
-of the study audit trail.
+computed from these audited per-branch values). Automatic QC classifies every branch (`ok` / `stump` / `oblique` /
+`no-wall` / `unstable`), the reader can exclude any branch with one click, and
+the exclusion list is exportable as part of the study audit trail.
 
 ## What it measures
 
@@ -61,13 +39,12 @@ of the study audit trail.
 | Territories | parenchyma partition per terminal branch (Euclidean), per-branch served volume, caliber–territory scaling exponent | exploratory |
 | Vessels | vascular segmentation, TBV, BV5/BV10, vascular graph, bronchus-artery pairing (BA ratio), airway-vascular mismatch map | exploratory |
 | Mucus plugs | propose-and-confirm candidates with vascular witness and downstream territory | exploratory |
-| Air-flow model | standalone 1D resistance-network simulation on the measured tree (`flow.py`), off the standard report, clearly marked as a simulation | exploratory |
 
 *Core* endpoints are the candidates for metrological validation (phantom +
 reader studies, in progress); *exploratory* indices are research hypotheses and
 must not be interpreted as validated measurements. See
-[`docs/VALIDATION_BACKLOG.md`](docs/VALIDATION_BACKLOG.md) for the open
-validation program.
+[`docs/REVIEW_BACKLOG.md`](docs/REVIEW_BACKLOG.md) for the open validation
+program.
 
 ## Install
 
@@ -76,32 +53,33 @@ pip install -e .
 ```
 
 Requires Python ≥ 3.10. Dependencies: numpy, scipy, SimpleITK, scikit-image,
-networkx, pillow. The deep-learning backend additionally needs
-[TotalSegmentator](https://github.com/wasserth/TotalSegmentator)
-(`pip install TotalSegmentator`).
+networkx, pillow.
 
 ## Quickstart
 
-One command, from a DICOM folder / patient CD to the report — it selects the
-axial thin-slice series automatically (logging its choice), anonymizes,
-segments, and runs the full pipeline:
-
 ```bash
-python auto_report.py /path/to/dicom --case case01
+# One command: DICOM folder -> full tabbed report.
+# Auto-selects the most suitable series (thin, non-derived; skips MIP/scout and
+# warns loudly on thick/derived series), anonymises, runs TotalSegmentator
+# (lung_vessels), the full pipeline and the exploratory analyses, then assembles
+# the unified report. Idempotent: re-running skips already-produced steps.
+airwaylab report /path/to/dicom --name case01 --outdir out_dir
+#   -> out_dir/case01_report_unico.html   (+ anonymised CT, masks, work dir)
 ```
 
-Or run the steps yourself:
+Or step by step:
 
 ```bash
 # 1. DICOM folder or patient CD -> anonymous NIfTI (voxels + geometry only)
+#    (series auto-selected; pass a trailing index to force one)
 airwaylab anonymize /path/to/dicom case01.nii.gz
 
-# 2a. built-in segmentation -> report + CSV + QC images
+# 2. full pipeline -> report + CSV + QC images
 airwaylab run case01.nii.gz --name case01
 
-# 2b. deep-learning backend: bring your own airway mask
+# 2b. deep-learning backend: bring your own airway mask (e.g. TotalSegmentator)
 #     TotalSegmentator -i case01.nii.gz -o ts_out --task lung_vessels
-airwaylab run case01.nii.gz --mask ts_out/lung_airways.nii.gz --refine --name case01
+airwaylab run case01.nii.gz --mask ts_out/lung_airways.nii.gz --name case01
 ```
 
 With `--mask` the region growing is replaced by the external segmentation
@@ -110,9 +88,9 @@ witness** (every branch must show air along its centerline in the CT, so a
 generous mask cannot invent airways), a **resolution floor** (branches whose
 mask diameter is below the floor are mapped and counted but report no
 caliber — their values are nulled and preserved only in explicit
-`*_raw_nonreportable` audit columns), and a tight small-airway search
-window with an escape gate. This is the **two-regime rule**: caliber only where
-the data supports it, topology/territories from the full deep tree.
+`*_raw_nonreportable` audit columns), and a tight small-airway search window
+with an escape gate. This is the **two-regime rule**: caliber only where the
+data supports it, topology/territories from the full deep tree.
 
 Honesty notes on these gates: the witness thresholds (median centerline
 attenuation ≤ −750 HU; ≥ 60% of core points < −600 HU) are experimental
@@ -154,9 +132,6 @@ in [`docs/`](docs/). The short version of the limits:
   shape of the wall/generation curve is informative, distal absolute values are
   upper bounds.
 - LAA-950 is strongly kernel-dependent; compare like with like.
-- The air-flow model is an exploratory simulation, not a measurement: its
-  numbers must be frozen and compared against plethysmography/spirometry/MBW
-  before any interpretation.
 - All values are comparable across patients **only** at equal CT protocol and
   equal AirwayLab version; process a whole cohort with one version.
 
@@ -167,21 +142,26 @@ pytest
 ```
 
 The test suite uses a synthetic digital tube phantom (no patient data) and
-checks lumen-diameter recovery, wall measurement, oblique-cut flagging, and the
-flow-network solver.
+checks lumen-diameter recovery, wall measurement, and oblique-cut flagging.
 
 ## Roadmap
 
+- ~~Deep-learning airway segmentation to close the depth gap~~ shipped in
+  v0.24 as the `--mask` external backend (works with TotalSegmentator;
+  nnU-Net / ATM'22 models are equally usable)
 - Integral-based wall thickness (blur-robust) + 3D-printed phantom validation
 - Batch mode with one-row-per-case cohort CSV (Pi10, plug scores, all indices)
 - Baseline/follow-up registered comparison (side-by-side CPR, per-branch delta)
 - Bronchoscopy ruler: CPR with mm distance from carina to the biopsy target
-- Frozen validation protocol for the exploratory air-flow model
 
 ## Citation
 
-Until the methods paper is out, please cite the repository (see
-`CITATION.cff`, or the "Cite this repository" button on the repository page).
+Until the methods paper is out, please cite the archived release:
+
+> Novali, M. (2026). *AirwayLab: transparent quantitative CT analysis of the
+> airways* (v0.24.0). Zenodo. https://doi.org/10.5281/zenodo.21963989
+
+Or use the "Cite this repository" button (from `CITATION.cff`).
 
 ## License
 
