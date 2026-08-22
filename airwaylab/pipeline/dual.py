@@ -131,10 +131,12 @@ try:
         cloud = {'x': [], 'y': [], 'z': [], 'delta': []}
     out_reg = {
         'status': 'exploratory',
-        'nota': 'indici esplorativi, non validati; la mappa voxel ha bias di '
-                'visibilita\' bronchi/vasi (leggere il confronto TRA lobi). '
-                'occlusione_idx = frazione voxel con delta>10mm; dilatazione_idx '
-                '= frazione bronchi con BA>1. Assi separati, nessuna diagnosi.',
+        'nota': 'indici esplorativi e DESCRITTIVI, non validati; la mappa voxel ha '
+                'bias di visibilita\' bronchi/vasi (leggere il confronto TRA lobi). '
+                'mismatch_idx = frazione voxel con delta>10mm (via aerea non '
+                'rappresentata/sotto-risoluzione, NON occlusione); ba_gt1_idx = '
+                'frazione bronchi con BA>1 (NON distingue dilatazione da pruning). '
+                'Assi separati, nessuna diagnosi.',
         'mismatch_mm': 10.0, 'ba_dilatazione': 1.0,
         'per_lobo': regional,
         'cloud': cloud,

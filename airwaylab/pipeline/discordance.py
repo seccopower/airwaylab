@@ -5,13 +5,15 @@ bronchi/vasi, ha delta quasi ovunque positivo: si leggono i GRADIENTI, non i
 valori assoluti. Regionalizzando (per lobo/territorio) si confronta lobo con
 lobo, il che cancella gran parte del bias comune e recupera il pattern.
 
-Decomposizione (indici ESPLORATIVI, non diagnosi): la discordanza ha due cause
-opposte, che un singolo delta mescola —
-  * occlusione / de-ventilazione : parenchima vascolarizzato ma LONTANO da una
-    via aerea (delta molto positivo) -> ramo occluso o sotto-risoluzione;
-  * dilatazione / rimodellamento  : via aerea piu' larga dell'arteria satellite
-    (BA ratio > 1) -> sospetto bronchiectasia / rimodellamento.
-Si esportano i DUE indici separati, mai fusi in uno.
+Decomposizione (indici ESPLORATIVI e DESCRITTIVI, non diagnosi): un singolo delta
+mescola due segnali, che teniamo separati —
+  * mismatch di distanza : parenchima vicino a un vaso ma LONTANO dall'albero aereo
+    (delta molto positivo). NON e' occlusione: e' in gran parte via aerea non
+    rappresentata / sotto-risoluzione, per l'asimmetria di profondita' di
+    segmentazione tra albero vascolare (piu' profondo) e aereo;
+  * rapporto bronco-arteria : via aerea piu' larga dell'arteria satellite (BA > 1).
+    NON distingue dilatazione bronchiale da assottigliamento arterioso.
+Si esportano i DUE indici separati, mai fusi in uno, con nomi neutri.
 
 Puro: nessun I/O, solo numpy. Testato in tests/test_discordance.py.
 """
@@ -60,16 +62,22 @@ def regional_summary(delta_by_lobe, ba_by_lobe, mismatch_mm=10.0, ba_dil=1.0):
 
 
 def classify_lobe(stat, mismatch_hi=0.5, ba_hi=0.5):
-    """Etichetta ESPLORATIVA di quale asse domina in un lobo, dai due indici
-    separati. NON e' una diagnosi.
+    """Etichetta DESCRITTIVA ed esplorativa di quale asse domina in un lobo, dai
+    due indici separati. NON e' una diagnosi.
 
-    Nota onesta: l'asse BA>1 NON distingue dilatazione bronchiale (bronchiectasia/
-    rimodellamento) da assottigliamento arterioso (vascular pruning, tipico
-    dell'enfisema) — il rapporto da solo non basta. Per questo l'etichetta e'
-    neutra 'BA>1', non 'dilatazione'.
+    ATTENZIONE (review GPT, blocker #2): l'asse 'mismatch' e' basato sulla distanza
+    voxel dai due alberi (delta = d_aereo - d_vaso). Un delta alto NON dimostra
+    un'occlusione: l'albero vascolare si segmenta piu' a fondo di quello aereo, quindi
+    il delta misura in gran parte l'ASIMMETRIA di profondita' di segmentazione (via
+    aerea non rappresentata / sotto-risoluzione), non l'occlusione. Un'occlusione
+    richiede evidenza CT positiva (revisione radiologica). Per questo l'etichetta e'
+    'via aerea non rappresentata', non 'occlusione'.
+    Analogamente l'asse BA NON distingue dilatazione bronchiale da assottigliamento
+    arterioso: etichetta neutra 'rapporto bronco-arteria elevato'.
 
-    Ritorna dict {occlusione_idx, ba_gt1_idx, prevalenza} con prevalenza in
-    {'occlusione','BA>1','mista','nella norma','dati insufficienti'}."""
+    Ritorna dict {mismatch_idx, ba_gt1_idx, prevalenza} con prevalenza in
+    {'via aerea non rappresentata','rapporto bronco-arteria elevato','mista',
+     'nessuna discordanza elevata','dati insufficienti'}."""
     mm = stat.get('mismatch_frac')
     dil = stat.get('ba_gt1_frac')
     if mm is None and dil is None:
@@ -77,9 +85,9 @@ def classify_lobe(stat, mismatch_hi=0.5, ba_hi=0.5):
     elif (mm or 0) >= mismatch_hi and (dil or 0) >= ba_hi:
         prev = 'mista'
     elif (mm or 0) >= mismatch_hi:
-        prev = 'occlusione'
+        prev = 'via aerea non rappresentata'
     elif (dil or 0) >= ba_hi:
-        prev = 'BA>1'
+        prev = 'rapporto bronco-arteria elevato'
     else:
-        prev = 'nella norma'
-    return {'occlusione_idx': mm, 'ba_gt1_idx': dil, 'prevalenza': prev}
+        prev = 'nessuna discordanza elevata'
+    return {'mismatch_idx': mm, 'ba_gt1_idx': dil, 'prevalenza': prev}

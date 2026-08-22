@@ -1,11 +1,12 @@
 """Analisi arteria/vena da maschere DL separate (TotalSegmentator lung_vessels).
 
 Usa le maschere `lung_arteries` / `lung_veins` — gia' prodotte dallo stesso run
-che da' `lung_airways` — che finora NON usavamo. Calcola:
-  - volumi arterioso/venoso + rapporto A/V (globale e per lobo);
-  - pruning arterioso: BVn (volume nei vasi < n mm^2) globale e per lobo
-    (approssimazione EDT, esplorativa: vedi av_core);
+che da' `lung_airways`. Calcola:
+  - volumi della MASCHERA arteriosa/venosa + rapporto A/V (globale e per lobo).
+    NON e' volume ematico ne' perfusione (TC senza contrasto);
   - nuvole 3D di arterie e vene nel frame di display dell'albero (per av_viz).
+Il pruning / BV5 (piccoli vasi) e' RITIRATO: la stima voxelwise da EDT non e' una
+stima valida del calibro (guscio dei vasi grandi) — vedi review GPT, blocker #1.
 
 Le maschere native vengono ricampionate sulla griglia iso (riferimento ct_iso,
 stesso spazio fisico) e l'EDT gira sul bounding box (memory-frugale).
@@ -101,32 +102,45 @@ vein_ml_lobe = {}
 for lb in set(vein_lobe.tolist()):
     vein_ml_lobe[lb] = round(float((vein_lobe == lb).sum()) * vox_ml, 1)
 
+# volume di parenchima per lobo dalla mappa territori (contesto per i volumi vascolari)
+vox_ml_ds = (ISO * DS) ** 3 / 1000
+paren_ml = {}
+_lbl, _cnt = np.unique(lab_ds[lab_ds > 0], return_counts=True)
+for _l, _c in zip(_lbl, _cnt):
+    lb = lut.get(int(_l), 'CENTRAL')
+    paren_ml[lb] = paren_ml.get(lb, 0.0) + _c * vox_ml_ds
+
+# NB (review GPT, blocker #1): il BV5 per soglia voxelwise dell'EDT NON e' una stima
+# valida del volume di piccoli vasi (classifica come "piccolo" il guscio periferico
+# di ogni vaso grande). Ritirato dagli output finche' non c'e' una stima di calibro
+# segmentale/scale-space validata. Qui restano solo volumi di maschera vascolare e A/V.
 per_lobo = {}
 for lb in set(list(per_art) + list(vein_ml_lobe)):
     a_ml = per_art.get(lb, {}).get('tbv_ml')
     v_ml = vein_ml_lobe.get(lb)
+    par = paren_ml.get(lb)
     per_lobo[lb] = {
         'art_ml': a_ml, 'vein_ml': v_ml,
         'av_ratio': av_ratio(a_ml, v_ml) if (a_ml and v_ml) else None,
-        'bv5_frac': per_art.get(lb, {}).get('bv5_frac'),
-        'bv10_frac': per_art.get(lb, {}).get('bv10_frac'),
+        'parenchima_ml': round(par, 1) if par else None,
     }
 
 out = {
     'status': 'exploratory',
-    'nota': 'A/V da segmentazione DL su TC SENZA contrasto: verificare la '
-            'qualita\' della separazione nella vista A/V (QC). BVn stimato con '
-            'EDT (approssimazione dello standard scale-space), dipendente da '
-            'kernel/dose: confronti mela-con-mela. Strutturale, non perfusione.',
+    'nota': 'Volumi della MASCHERA vascolare (DL) su TC SENZA contrasto: NON e\' '
+            'volume ematico ne\' perfusione. Verificare la qualita\' della '
+            'separazione A/V nella vista (QC). Il pruning / BV5 (piccoli vasi) e\' '
+            'stato RITIRATO: la stima voxelwise da EDT non e\' valida (guscio dei '
+            'vasi grandi), serve un metodo di calibro segmentale/scale-space.',
     'arterie_ml': art_ml, 'vene_ml': vein_ml,
     'av_ratio': av_ratio(art_ml, vein_ml),
-    'arterioso_globale': glob,
+    'arterioso_globale': {'tbv_ml': glob['tbv_ml']},
     'per_lobo': per_lobo,
     'cloud_art': cloud(za, ya, xa),
     'cloud_vein': cloud_v,
 }
 json.dump(out, open('out/vascular_av.json', 'w'), indent=1)
-print(f"arterie {art_ml} ml · vene {vein_ml} ml · A/V {out['av_ratio']} · "
-      f"BV5/TBV art {glob['bv5_frac']}")
-for lb, s in sorted(per_lobo.items(), key=lambda x: (x[1]['bv5_frac'] or 0)):
-    print(f"  {lb:8s} art {s['art_ml']} ml · A/V {s['av_ratio']} · BV5/TBV {s['bv5_frac']}")
+print(f"arterie {art_ml} ml · vene {vein_ml} ml · A/V {out['av_ratio']} "
+      f"(volumi maschera vascolare, non ematici; BV5/pruning ritirato)")
+for lb, s in sorted(per_lobo.items(), key=lambda x: (x[1]['art_ml'] or 0)):
+    print(f"  {lb:8s} art {s['art_ml']} ml · vene {s['vein_ml']} ml · A/V {s['av_ratio']}")

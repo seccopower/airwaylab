@@ -19,7 +19,15 @@ def radius_for_csa(csa_mm2):
 
 def bvn_volumes(edt_mm, vox_ml, csa_list=(5.0, 10.0)):
     """Da un array di raggi locali (EDT, mm) dei SOLI voxel vascolari, ritorna
-    il volume totale (TBV) e i BVn per ogni soglia di sezione in csa_list."""
+    il volume totale (TBV) e i BVn per ogni soglia di sezione in csa_list.
+
+    ATTENZIONE — i campi bvN sono DEPRECATI e RITIRATI dagli output (review GPT,
+    blocker #1): sogliare l'EDT voxelwise con r<r0 NON classifica i vasi per
+    calibro, ma marca il guscio periferico di spessore r0 di OGNI vaso, anche
+    grande (frazione erronea di un cilindro di raggio R = 1-(1-r0/R)^2 ~ 44% per
+    R=5mm). Non e' una stima valida del BV5. Serve un metodo di calibro segmentale
+    /scale-space (Estepar). Qui si usa solo 'tbv_ml' (volume totale della maschera).
+    """
     e = np.asarray(edt_mm, dtype=float)
     tbv = float(e.size) * vox_ml
     out = {'tbv_ml': round(tbv, 1)}

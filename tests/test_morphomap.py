@@ -5,11 +5,36 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "airwaylab", "pipeline"))
 
+import numpy as np   # noqa: E402
+
 from morphomap_core import (   # noqa: E402
     aggregate_lobes,
     classify_lobe,
     tissue_fraction,
+    voxelwise_destruction,
 )
+
+
+def test_voxelwise_destruction_noncubic():
+    # griglia ds NON cubica (2x1x1), fattore 3 per asse -> iso (6,3,3)
+    ds_shape = (2, 1, 1)
+    ct = np.full((6, 3, 3), 0.0, np.float32)   # tutto tessuto (0 HU)
+    # prima meta' in z-blocco 0: enfisema totale; il resto tessuto
+    ct[0:3] = -1000.0                            # cella ds [0]: tutta aria/enfisema
+    laa, ftis = voxelwise_destruction(ct, ds_shape, laa_hu=-950.0)
+    assert laa.shape == ds_shape
+    assert laa[0, 0, 0] == 1.0 and laa[1, 0, 0] == 0.0
+    assert ftis[0, 0, 0] == 0.0 and ftis[1, 0, 0] == 1.0
+
+
+def test_voxelwise_destruction_partial_block():
+    # una cella ds, blocco 3x3x3: 9 sotto-voxel enfisematosi su 27 -> laa 1/3
+    ct = np.full((3, 3, 3), -800.0, np.float32)   # f_tissue 0.2, non enfisema
+    ct[0] = -1000.0                               # 9 voxel < -950
+    laa, ftis = voxelwise_destruction(ct, (1, 1, 1), laa_hu=-950.0)
+    assert abs(laa[0, 0, 0] - 9 / 27) < 1e-6
+    # f_tissue: (9*0 + 18*0.2)/27 = 0.1333
+    assert abs(ftis[0, 0, 0] - (18 * 0.2) / 27) < 1e-6
 
 
 def test_tissue_fraction_clip():
@@ -29,7 +54,7 @@ def test_aggregate_axes_kept_separate():
     per, glob = aggregate_lobes(terr)
     # conduttanza uguale...
     assert per['RLL']['cond_frac'] == per['RUL']['cond_frac'] == 0.5
-    # ...ma il mismatch (q*laa) e' tutto nel lobo distrutto
+    # ...ma il carico (q*laa) e' tutto nel lobo a bassa attenuazione
     assert per['RLL']['ds_flux'] == 70.0 and per['RUL']['ds_flux'] == 10.0
     assert per['RLL']['ds_share'] == 0.875   # 70/80
     # numero globale: (70+10)/(200) = 0.40
@@ -37,7 +62,7 @@ def test_aggregate_axes_kept_separate():
 
 
 def test_ds_share_weights_conductance():
-    # un lobo molto distrutto ma con conduttanza trascurabile contribuisce poco
+    # un lobo con alta bassa-attenuazione ma conduttanza trascurabile contribuisce poco
     terr = [
         {'lobe': 'RLL', 'q': 200.0, 'laa': 0.50, 'f_tissue': 0.10, 'n': 500},
         {'lobe': 'RML', 'q': 1.0, 'laa': 0.90, 'f_tissue': 0.05, 'n': 500},
@@ -77,14 +102,18 @@ def test_absent_lobe_omitted():
 
 
 def test_classify_lobe():
-    # distrutto + conduttanza alta -> candidato spazio morto
-    assert 'spazio morto' in classify_lobe(0.72, 0.49)
-    # distrutto ma conduttanza contenuta
-    assert classify_lobe(0.48, 0.13) == 'distrutto, conduttanza contenuta'
-    # conservato
-    assert classify_lobe(0.12, 0.05) == 'parenchima conservato'
+    # bassa attenuazione alta + conduttanza alta
+    assert classify_lobe(0.72, 0.49) == 'conduttanza elevata su area a bassa attenuazione'
+    # bassa attenuazione alta ma conduttanza contenuta
+    assert classify_lobe(0.48, 0.13) == 'bassa attenuazione elevata, conduttanza contenuta'
+    # bassa attenuazione limitata
+    assert classify_lobe(0.12, 0.05) == 'bassa attenuazione limitata'
     # intermedio
     assert classify_lobe(0.30, 0.20) == 'intermedio'
+    # etichette prive di claim funzionali
+    for laa, sh in [(0.72, 0.49), (0.48, 0.13), (0.12, 0.05), (0.30, 0.20)]:
+        lab = classify_lobe(laa, sh)
+        assert 'spazio morto' not in lab and 'distrut' not in lab and 'conservato' not in lab
     # dati mancanti
     assert classify_lobe(None, 0.5) == 'dati insufficienti'
     assert classify_lobe(0.5, None) == 'dati insufficienti'

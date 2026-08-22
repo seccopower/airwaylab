@@ -4,28 +4,67 @@ Tiene DUE assi SEPARATI, per lobo/territorio, e li mette in relazione senza
 collassarli in un rapporto:
 
   conduttanza bronchiale  q   = flusso modellato che raggiunge il territorio
-                                (dal modello di flusso; surrogato di ventilazione)
-  distruzione parenchimale     = enfisema: frazione di voxel < -950 HU (LAA)
-                                e frazione di tessuto f = clip(1 + HU/1000, 0, 1)
+                                (dal modello di flusso, esplorativo)
+  bassa attenuazione inspiratoria = frazione di voxel < -950 HU (LAA) e frazione
+                                di tessuto f = clip(1 + HU/1000, 0, 1)
 
-Indice derivato — quanta conduttanza e' diretta a parenchima distrutto:
+Indice derivato — carico di bassa attenuazione pesato per la conduttanza:
   ds_flux_lobo = somma_terr( q_terr * laa_terr )
-  quota_conduttanza_verso_distrutto (globale) = somma ds_flux / somma q
-Alto = molta ventilazione modellata verso polmone enfisematoso = candidato
-SPAZIO MORTO strutturale. NON e' ventilazione misurata ne' spazio morto misurato:
-e' conduttanza (modello) x distruzione (TC), tenute distinte.
+  indice globale = somma ds_flux / somma q = somma_terr( (q/somma q) * laa )
+                 = MEDIA della LAA territoriale PESATA per le quote di conduttanza.
+
+ATTENZIONE all'interpretazione (review GPT, blocker #3 e major #4):
+- questo indice NON e' ventilazione reale, ne' ventilazione persa, ne' frazione
+  verso polmone distrutto, ne' spazio morto. E' una media pesata di un descrittore
+  di attenuazione;
+- su SINGOLA inspiratoria la bassa attenuazione (LAA -950) NON equivale a distruzione
+  parenchimale: puo' riflettere iperinflazione o air-trapping non enfisematoso,
+  particolarmente nella popolazione asmatica. L'air-trapping si valuta sull'espiratoria;
+- l'indice dipende dalla soglia HU (kernel/dose/ricostruzione) e dal volume inspiratorio:
+  confrontabile tra pazienti solo a parita' di protocollo;
+- le quote di conduttanza q derivano dal modello di flusso e sono in gran parte guidate
+  da diametri periferici IMPUTATI, non misurati.
 
 NOTA di disegno. Per il polmone f_tessuto e' sempre piccolo (~0.1-0.2: il polmone
 e' quasi tutto aria anche da sano), quindi (1 - f_tessuto) satura vicino a 1 e non
-discrimina i lobi. L'indice usa percio' l'LAA (soglia a -950 HU), che e' lo standard
-QCT dell'enfisema ed e' discriminante; f_tessuto resta esposto come asse informativo
-(utile in relativo, non come deficit assoluto).
+discrimina i lobi. L'indice usa percio' l'LAA (soglia a -950 HU); f_tessuto resta
+esposto come asse informativo (utile in relativo).
 
 Puro: solo aritmetica. Testato in tests/test_morphomap.py.
 """
+import numpy as np
+
 LOBE_AID = ('RUL', 'RML', 'RLL', 'LUL', 'LING', 'LLL')
 
 SCHEMA_VERSION = 1
+
+
+def voxelwise_destruction(ct, ds_shape, laa_hu=-950.0):
+    """Riduce la TC iso alla griglia ds (territori) accumulando i sotto-voxel.
+
+    La griglia ds e' un downsampling a fattore intero della iso, con la stessa
+    origine (ogni cella ds = blocco fac x fac x fac di voxel iso). Il fattore e'
+    dedotto per asse (NON assunto uguale sui tre assi, NE' cubico: es. una griglia
+    171x171x153 e' valida). Per ogni cella ds ritorna:
+      laa      = frazione di sotto-voxel < laa_hu (enfisema, a piena risoluzione)
+      f_tissue = media di clip(1 + HU/1000, 0, 1) sui sotto-voxel
+
+    Frugale in memoria: nessun volume iso intero materializzato oltre alla TC.
+    """
+    ct = np.asarray(ct, dtype=np.float32)
+    fac = [max(1, int(round(ct.shape[i] / ds_shape[i]))) for i in range(3)]
+    ctp = np.pad(ct, [(0, ds_shape[i] * fac[i] - ct.shape[i]) for i in range(3)],
+                 constant_values=-1000.0)
+    laa = np.zeros(ds_shape, np.float32)
+    ftis = np.zeros(ds_shape, np.float32)
+    for a in range(fac[0]):
+        for b in range(fac[1]):
+            for c in range(fac[2]):
+                sub = ctp[a::fac[0], b::fac[1], c::fac[2]][:ds_shape[0], :ds_shape[1], :ds_shape[2]]
+                laa += (sub < laa_hu)
+                ftis += np.clip(1.0 + sub / 1000.0, 0.0, 1.0)
+    n = float(fac[0] * fac[1] * fac[2])
+    return laa / n, ftis / n
 
 
 def tissue_fraction(hu):
@@ -81,15 +120,19 @@ def aggregate_lobes(territories, lobes=LOBE_AID):
 
 
 def classify_lobe(laa, ds_share, laa_hi=0.40, share_hi=0.20, laa_lo=0.25):
-    """Etichetta ESPLORATIVA del pattern del lobo (non diagnosi).
+    """Etichetta DESCRITTIVA ed esplorativa del lobo (non diagnosi).
 
-    Incrocia distruzione (laa) e quota del mismatch di conduttanza (ds_share)."""
+    Incrocia bassa attenuazione inspiratoria (laa, frazione < -950 HU) e quota del
+    carico pesato per conduttanza (ds_share). NB: su singola inspiratoria la bassa
+    attenuazione NON equivale a distruzione parenchimale (puo' riflettere
+    iperinflazione / air-trapping non enfisematoso, specie nell'asma). Nessun
+    riferimento a distruzione o spazio morto."""
     if laa is None or ds_share is None:
         return 'dati insufficienti'
     if laa >= laa_hi and ds_share >= share_hi:
-        return 'conduttanza alta verso parenchima distrutto (candidato spazio morto)'
+        return 'conduttanza elevata su area a bassa attenuazione'
     if laa >= laa_hi:
-        return 'distrutto, conduttanza contenuta'
+        return 'bassa attenuazione elevata, conduttanza contenuta'
     if laa < laa_lo:
-        return 'parenchima conservato'
+        return 'bassa attenuazione limitata'
     return 'intermedio'

@@ -1,9 +1,10 @@
-"""Visualizzazione della discordanza aereo-vascolare (ESPLORATIVA) — pagina
-standalone. Due assi separati:
-  - albero 3D colorato dal BA ratio (bronco/arteria): asse DILATAZIONE
-    (rosso = via piu' larga dell'arteria, sospetto rimodellamento/bronchiectasia);
-  - barre per lobo: frazione di mismatch (asse OCCLUSIONE) e frazione BA>1
-    (asse dilatazione), regionalizzate — si confronta lobo con lobo.
+"""Visualizzazione della discordanza morfometrica bronco-arteria (ESPLORATIVA) —
+pagina standalone. Due assi DESCRITTIVI separati (vedi discordance.py per i limiti):
+  - albero 3D colorato dal rapporto bronco-arteria (BA): rosso = via piu' larga
+    dell'arteria satellite (BA>1; NON distingue dilatazione da pruning arterioso);
+  - barre per lobo: frazione di mismatch di distanza (via aerea non rappresentata/
+    sotto-risoluzione, NON occlusione) e frazione BA>1, regionalizzate — confronto
+    lobo con lobo.
 
 Run nel work dir dopo dual.py + viz.py. Output: out/dual_viz.html (autonomo).
 """
@@ -51,7 +52,7 @@ for b in branches:
                    'line': {'color': col, 'width': float(w)},
                    'hovertemplate': ht + '<extra></extra>', 'showlegend': False})
 
-# barre per lobo: mismatch (occlusione) e BA>1 (dilatazione)
+# barre per lobo: mismatch di distanza e BA>1 (assi descrittivi separati)
 lobi = [k for k in per_lobo if k != 'CENTRAL']
 lobi.sort(key=lambda k: -(per_lobo[k].get('mismatch_frac') or 0))
 mm = [round(100 * (per_lobo[k].get('mismatch_frac') or 0), 1) for k in lobi]
@@ -87,13 +88,9 @@ cloud_trace = {
     'hovertemplate': 'delta %{marker.color:.1f} mm<extra></extra>',
     'showlegend': False,
 }
-coronal_card = (
-    f'<div class="card"><h2>Mappa coronale del delta</h2>'
-    f'<p class="note">Proiezione coronale mediana del delta (blu vicino alle vie → '
-    f'rosso lontano dalle vie a parità di vasi). Contorno polmone e albero aereo per '
-    f'riferimento. Leggere i gradienti e le asimmetrie, non i valori assoluti.</p>'
-    f'<img src="{coronal_png}" style="max-width:100%;border-radius:8px"></div>'
-    if coronal_png else '')
+# la mappa coronale 2D e' stata rimossa: ridondante e poco leggibile rispetto
+# alla nuvola 3D del delta + le barre per lobo.
+coronal_card = ''
 
 name = os.environ.get('AIRWAYLAB_CASE', 'caso')
 html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
@@ -123,14 +120,13 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
   .legend {{ display:flex; gap:16px; font-size:12px; color:var(--text-secondary); margin-top:8px }}
   .sw {{ width:14px; height:14px; border-radius:4px; display:inline-block; vertical-align:middle; margin-right:5px }}
 </style></head><body><div class="viz-root"><div class="wrap">
-<h1>Discordanza aereo-vascolare</h1>
-<p class="sub">{name} · due assi separati: BA ratio (via vs arteria) e mismatch regionale (parenchima vascolarizzato senza via aerea)</p>
+<h1>Discordanza morfometrica bronco–arteria</h1>
+<p class="sub">{name} · due assi descrittivi separati: rapporto bronco–arteria e mismatch di distanza regionale — esplorativi, non funzionali</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
-  ⚠ <b>Indici ESPLORATIVI, non validati.</b> La mappa voxel ha un bias di visibilità bronchi/vasi:
-  si legge il confronto <b>tra lobi</b>, non i valori assoluti.</div>
+  ⚠ <b>Indici ESPLORATIVI e DESCRITTIVI, non validati, non diagnosi.</b> Il "mismatch" è basato sulla distanza dai due alberi: l'albero vascolare si segmenta più a fondo di quello aereo, quindi un mismatch alto indica soprattutto <b>via aerea non rappresentata / sotto-risoluzione</b>, <b>non occlusione</b> (che richiede evidenza CT positiva). Il rapporto BA <b>non distingue</b> dilatazione bronchiale da assottigliamento arterioso. Si legge il confronto <b>tra lobi</b>, non i valori assoluti.</div>
 <div class="card">
-  <h2>Albero colorato dal BA ratio (asse dilatazione)</h2>
-  <p class="note">Rosso = bronco più largo dell'arteria satellite (BA&gt;1, sospetto rimodellamento/bronchiectasia); blu = più stretto; grigio ≈ 1. I rami non accoppiati sono grigio chiaro e sottili.</p>
+  <h2>Albero colorato dal rapporto bronco–arteria</h2>
+  <p class="note">Rosso = bronco più largo dell'arteria satellite (BA&gt;1); blu = più stretto; grigio ≈ 1. Un BA&gt;1 <b>non</b> distingue dilatazione bronchiale da riduzione arteriosa. I rami non accoppiati sono grigio chiaro e sottili.</p>
   <div id="tree3d"></div>
   <div class="legend">
     <span><span class="sw" style="background:{DIV_LO}"></span>BA &lt; 1</span>
@@ -140,13 +136,13 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 </div>
 <div class="card">
   <h2>Nuvola 3D del delta (ruotabile)</h2>
-  <p class="note">Ogni punto è parenchima polmonare, colorato dal delta = distanza dalla via aerea − distanza dal vaso. Rosso = vascolarizzato ma lontano da una via aerea (asse occlusione). Trascina per ruotare.</p>
+  <p class="note">Ogni punto è parenchima polmonare, colorato dal delta = distanza dalla via aerea − distanza dal vaso. Rosso = vicino a un vaso ma lontano dall'albero aereo — <b>via aerea non rappresentata/sotto-risoluzione</b> in quella regione, <b>non</b> necessariamente occlusione. Vista qualitativa; trascina per ruotare.</p>
   <div id="cloud3d"></div>
 </div>
 {coronal_card}
 <div class="card">
-  <h2>Per lobo: occlusione vs BA&gt;1</h2>
-  <p class="note">Blu = % di parenchima in mismatch (asse occlusione/de-ventilazione). Arancio = % di bronchi con BA&gt;1 (dilatazione bronchiale <b>o</b> assottigliamento arterioso/pruning: il rapporto non li distingue). Regionalizzato: confronta i lobi tra loro.</p>
+  <h2>Per lobo: mismatch di distanza vs BA&gt;1</h2>
+  <p class="note">Blu = % di parenchima in mismatch di distanza (via aerea non rappresentata/sotto-risoluzione, <b>non</b> occlusione). Arancio = % di bronchi con BA&gt;1 (dilatazione bronchiale <b>o</b> assottigliamento arterioso: il rapporto non li distingue). Regionalizzato: confronta i lobi tra loro.</p>
   <div id="bars"></div>
 </div>
 <div class="card">

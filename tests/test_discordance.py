@@ -46,13 +46,15 @@ def test_regional_summary_handles_missing_side():
 
 
 def test_classify_lobe_decomposition():
-    # occlusione dominante
-    assert classify_lobe({'mismatch_frac': 0.7, 'ba_gt1_frac': 0.1})['prevalenza'] == 'occlusione'
-    # BA>1 dominante (dilatazione O pruning: etichetta neutra)
-    assert classify_lobe({'mismatch_frac': 0.1, 'ba_gt1_frac': 0.7})['prevalenza'] == 'BA>1'
+    # mismatch di distanza dominante -> via aerea non rappresentata (NON occlusione)
+    r = classify_lobe({'mismatch_frac': 0.7, 'ba_gt1_frac': 0.1})
+    assert r['prevalenza'] == 'via aerea non rappresentata'
+    assert r['mismatch_idx'] == 0.7 and 'occlus' not in r['prevalenza']
+    # BA>1 dominante (etichetta neutra, non 'dilatazione'/'pruning')
+    assert classify_lobe({'mismatch_frac': 0.1, 'ba_gt1_frac': 0.7})['prevalenza'] == 'rapporto bronco-arteria elevato'
     # entrambe alte
     assert classify_lobe({'mismatch_frac': 0.6, 'ba_gt1_frac': 0.6})['prevalenza'] == 'mista'
     # nessuna
-    assert classify_lobe({'mismatch_frac': 0.1, 'ba_gt1_frac': 0.1})['prevalenza'] == 'nella norma'
+    assert classify_lobe({'mismatch_frac': 0.1, 'ba_gt1_frac': 0.1})['prevalenza'] == 'nessuna discordanza elevata'
     # dati assenti
     assert classify_lobe({'mismatch_frac': None, 'ba_gt1_frac': None})['prevalenza'] == 'dati insufficienti'

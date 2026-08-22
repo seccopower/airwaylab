@@ -3,13 +3,15 @@
 Incrocia, per lobo/territorio, DUE assi tenuti separati:
   - conduttanza bronchiale  = flusso modellato che raggiunge il territorio
                               (flow.json, modello di flusso esplorativo)
-  - distruzione parenchimale = enfisema (LAA, %voxel < -950 HU) e f_tessuto,
+  - bassa attenuazione inspiratoria = LAA (%voxel < -950 HU) e f_tessuto,
                               campionati dalla TC dentro ogni territorio.
-Indice derivato: quota di conduttanza diretta a parenchima distrutto
-(= candidato spazio morto strutturale). NON e' ventilazione ne' V/Q misurati.
+Indice derivato: media della LAA territoriale PESATA per le quote di conduttanza.
+NON e' ventilazione, perfusione, spazio morto ne distruzione (vedi morphomap_core
+per i limiti; su singola inspiratoria la LAA non equivale a distruzione, specie
+nell'asma). Descrittore strutturale esplorativo.
 
 Dipendenze nel work dir: territory_labels_ds.nii.gz, territory_index.json,
-flow.json, ct_iso.nii.gz. Opzionale: vascular_av.json (BV5 per lobo, solo tabella).
+flow.json, ct_iso.nii.gz.
 Si salta se manca il flusso o le territorie. Output: out/morphomap.json + morphomap.html.
 
 Run nel work dir dopo territory.py + flow.py (+ vasculature.py, opz.).
@@ -20,7 +22,12 @@ import os
 import nibabel as nib
 import numpy as np
 
-from morphomap_core import SCHEMA_VERSION, aggregate_lobes, classify_lobe
+from morphomap_core import (
+    SCHEMA_VERSION,
+    aggregate_lobes,
+    classify_lobe,
+    voxelwise_destruction,
+)
 
 FLOW = 'out/flow.json'
 LABELS = 'out/territory_labels_ds.nii.gz'
@@ -41,20 +48,8 @@ lab = np.asarray(nib.load(LABELS).dataobj).astype(np.int32)
 # origine: ogni voxel ds = blocco 3x3x3 di voxel iso. Accumuliamo LAA e f_tessuto
 # su tutti i sotto-voxel senza materializzare il volume iso intero.
 ct = np.asarray(nib.load(CT).dataobj).astype(np.float32)
-S = lab.shape[0]
-ctp = np.pad(ct, [(0, S * 3 - s) for s in ct.shape], constant_values=-1000.0)
+laa, ftis = voxelwise_destruction(ct, lab.shape, laa_hu=LAA_HU)
 del ct
-laa = np.zeros(lab.shape, np.float32)     # frazione voxel < LAA_HU per cella ds
-ftis = np.zeros(lab.shape, np.float32)    # f_tessuto medio per cella ds
-for a in range(3):
-    for b in range(3):
-        for c in range(3):
-            sub = ctp[a::3, b::3, c::3][:S, :S, :S]
-            laa += (sub < LAA_HU)
-            ftis += np.clip(1.0 + sub / 1000.0, 0.0, 1.0)
-del ctp
-laa /= 27.0
-ftis /= 27.0
 
 # --- per territorio ---
 territories = []
@@ -75,26 +70,21 @@ if not territories:
 
 per, glob = aggregate_lobes(territories)
 
-# BV5 per lobo (solo per la tabella) se disponibile
-bv5 = {}
-if os.path.exists('out/vascular_av.json'):
-    for lb, s in json.load(open('out/vascular_av.json')).get('per_lobo', {}).items():
-        if s.get('bv5_ml') is not None:
-            bv5[lb] = s['bv5_ml']
-
 for lb, s in per.items():
     s['prevalenza'] = classify_lobe(s['laa'], s['ds_share'])
-    s['bv5_ml'] = bv5.get(lb)
 
 json.dump({'schema_version': SCHEMA_VERSION, 'status': 'exploratory',
+           'metrica': 'carico di bassa attenuazione inspiratoria (LAA<-950 HU) '
+                      'pesato per le quote di conduttanza modellata; NON ventilazione, '
+                      'perfusione, spazio morto ne distruzione',
            'laa_threshold_hu': LAA_HU, 'globale': glob, 'per_lobo': per},
           open('out/morphomap.json', 'w'), indent=1)
 
 print('Mappa strutturale multi-asse per lobo:')
-print(f"  quota conduttanza -> parenchima distrutto (globale): {100 * glob['cond_to_destroyed']:.1f}%")
+print(f"  carico LAA pesato per conduttanza (globale): {100 * glob['cond_to_destroyed']:.1f}%")
 for lb, s in sorted(per.items(), key=lambda x: -(x[1]['ds_share'] or 0)):
     print(f"  {lb:5s} cond {100 * s['cond_frac']:4.1f}%  LAA {100 * s['laa']:4.1f}%  "
-          f"f_tes {s['f_tissue']:.3f}  quota-mismatch {100 * (s['ds_share'] or 0):4.1f}%  {s['prevalenza']}")
+          f"f_tes {s['f_tissue']:.3f}  quota-carico {100 * (s['ds_share'] or 0):4.1f}%  {s['prevalenza']}")
 
 # --- pagina ---
 lobi = [lb for lb in per]
@@ -104,11 +94,13 @@ cond = [round(100 * per[lb]['cond_frac'], 1) for lb in lobi]
 laa_pct = [round(100 * per[lb]['laa'], 1) for lb in lobi]
 
 
-def _bar_col(v):
-    return '#c0392b' if v >= 30 else '#eb6834' if v >= 15 else '#9a9891'
+def _bar_col(laa_v):
+    # colore per DISTRUZIONE reale del lobo (LAA %), non per la quota relativa:
+    # su un polmone sano le quote sommano comunque a 100% ma restano grigie.
+    return '#c0392b' if laa_v >= 40 else '#eb6834' if laa_v >= 25 else '#9a9891'
 
 
-ds_cols = [_bar_col(v) for v in ds_share]
+ds_cols = [_bar_col(v) for v in laa_pct]
 
 
 def _esc(s):
@@ -118,7 +110,6 @@ def _esc(s):
 rows = ''.join(
     f"<tr><td>{lb}</td><td>{per[lb]['cond_q']}</td><td>{round(100 * per[lb]['cond_frac'], 1)}</td>"
     f"<td>{round(100 * per[lb]['laa'], 1)}</td><td>{per[lb]['f_tissue']}</td>"
-    f"<td>{per[lb]['bv5_ml'] if per[lb]['bv5_ml'] is not None else '—'}</td>"
     f"<td>{round(100 * (per[lb]['ds_share'] or 0), 1)}</td>"
     f"<td>{_esc(per[lb]['prevalenza'])}</td></tr>"
     for lb in lobi)
@@ -159,29 +150,29 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
   .sw {{ width:14px; height:14px; border-radius:4px; display:inline-block; vertical-align:middle; margin-right:5px }}
 </style></head><body><div class="viz-root"><div class="wrap">
 <h1>Mappa strutturale multi-asse</h1>
-<p class="sub">{name} · conduttanza bronchiale (modello di flusso) <b>×</b> distruzione parenchimale (enfisema TC), per lobo — assi tenuti separati</p>
+<p class="sub">{name} · conduttanza modellata (modello di flusso) <b>×</b> bassa attenuazione inspiratoria (LAA −950 HU), per lobo — assi tenuti separati</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
-  ⚠ <b>NON è ventilazione né V/Q misurati.</b> È conduttanza <i>modellata</i> (simulazione di flusso) incrociata con la distruzione <i>strutturale</i> (LAA &lt;−950&nbsp;HU dalla TC). L'indice segnala <b>rischio strutturale di spazio morto</b>: bronchi pervi che ventilano parenchima distrutto. Confronto tra lobi, esplorativo.</div>
+  ⚠ <b>Descrittore strutturale, NON funzionale.</b> È la media della <b>bassa attenuazione inspiratoria</b> (LAA &lt;−950 HU) pesata per le quote di <i>conduttanza modellata</i>. <b>Non</b> è ventilazione, perfusione, spazio morto né distruzione parenchimale. Su singola inspiratoria la bassa attenuazione può riflettere <b>iperinflazione o air-trapping non enfisematoso</b> (specie nell'asma; l'air-trapping si valuta sull'espiratoria). Dipende da soglia HU e volume inspiratorio: confronto tra lobi/pazienti solo a parità di protocollo. Le quote di conduttanza vengono dal modello di flusso e sono in gran parte da diametri imputati. Esplorativo.</div>
 <div class="tiles">
-  <div class="tile hero"><div class="k">Conduttanza → parenchima distrutto</div><div class="v">{head}<span class="u">%</span></div><div class="u">flusso modellato verso polmone &lt;−950 HU</div></div>
-  <div class="tile"><div class="k">Enfisema polmone (LAA −950)</div><div class="v">{round(100 * glob['laa_lung'], 1)}<span class="u">%</span></div></div>
+  <div class="tile hero"><div class="k">Carico LAA pesato per conduttanza</div><div class="v">{head}<span class="u">%</span></div><div class="u">media LAA inspiratoria pesata per le quote di flusso modellato</div></div>
+  <div class="tile"><div class="k">Bassa attenuazione inspiratoria (LAA −950)</div><div class="v">{round(100 * glob['laa_lung'], 1)}<span class="u">%</span></div><div class="u">media polmone</div></div>
   <div class="tile"><div class="k">f_tessuto medio polmone</div><div class="v">{glob['f_tissue_lung']}</div><div class="u">frazione non-aria</div></div>
 </div>
 <div class="card">
-  <h2>Quota del mismatch per lobo — dove va la conduttanza sprecata</h2>
-  <p class="note">Ogni barra = quota del lobo sul totale della conduttanza diretta a parenchima distrutto (q × enfisema). Pesa insieme <b>quanto flusso</b> riceve il lobo e <b>quanto è distrutto</b>: il lobo più alto è il primo candidato a spazio morto.</p>
+  <h2>Quota per lobo del carico LAA pesato per conduttanza</h2>
+  <p class="note">Ogni barra = quota del lobo sul totale di (conduttanza × bassa attenuazione). Pesa insieme <b>quanto flusso modellato</b> riceve il lobo e <b>quanta bassa attenuazione</b> ha. <b>Colore = bassa attenuazione del lobo</b> (LAA): rosso ≥40%, arancio ≥25%, grigio sotto — su un polmone con LAA bassa le barre restano grigie anche se una quota è alta (le quote sommano comunque a 100%). Leggi l'altezza <i>col</i> valore globale in testa.</p>
   <div id="ds"></div>
 </div>
 <div class="card">
   <h2>I due assi, affiancati per lobo</h2>
-  <p class="note">Blu = quota di conduttanza (flusso modellato). Rosso = enfisema del lobo (LAA). Il rischio di spazio morto nasce dove le due barre sono <b>entrambe</b> alte: molto flusso verso molto parenchima distrutto.</p>
+  <p class="note">Blu = quota di conduttanza (flusso modellato). Rosso = bassa attenuazione del lobo (LAA). Le due barre sono descrittori distinti e non indipendenti; nessuna delle due è una misura funzionale.</p>
   <div id="grp"></div>
   <div class="legend"><span><span class="sw" style="background:#2a78d6"></span>conduttanza (quota %)</span>
-    <span><span class="sw" style="background:#c0392b"></span>enfisema LAA (%)</span></div>
+    <span><span class="sw" style="background:#c0392b"></span>bassa attenuazione LAA (%)</span></div>
 </div>
 <div class="card">
   <h2>Tabella regionale</h2>
-  <table><thead><tr><th>Lobo</th><th>conduttanza (ml/s)</th><th>quota cond. %</th><th>LAA %</th><th>f_tessuto</th><th>BV5 (ml)</th><th>quota mismatch %</th><th>pattern</th></tr></thead>
+  <table><thead><tr><th>Lobo</th><th>conduttanza (ml/s)</th><th>quota cond. %</th><th>LAA %</th><th>f_tessuto</th><th>quota carico %</th><th>pattern</th></tr></thead>
   <tbody>{rows}</tbody></table>
 </div>
 </div></div>
@@ -189,9 +180,9 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 const L={json.dumps(lobi)}, DS={json.dumps(ds_share)}, DSC={json.dumps(ds_cols)};
 const COND={json.dumps(cond)}, LAA={json.dumps(laa_pct)};
 Plotly.newPlot('ds', [{{type:'bar', x:L, y:DS, marker:{{color:DSC}},
-  hovertemplate:'%{{x}} · %{{y}}% del mismatch totale<extra></extra>'}}], {{
+  hovertemplate:'%{{x}} · %{{y}}% del carico totale<extra></extra>'}}], {{
   margin:{{l:44,r:10,t:8,b:30}},
-  yaxis:{{title:{{text:'quota del mismatch (%)'}},color:'#898781'}}, xaxis:{{color:'#898781'}},
+  yaxis:{{title:{{text:'quota del carico (%)'}},color:'#898781'}}, xaxis:{{color:'#898781'}},
   paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)' }},
   {{displayModeBar:false, responsive:true}});
 Plotly.newPlot('grp', [

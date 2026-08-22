@@ -2,7 +2,8 @@
   - nuvole 3D separate: arterie (rosso) e vene (blu), con ancore fisse D/S che
     ruotano con l'anatomia (riferimento destra/sinistra);
   - QC visivo della separazione A/V (su TC senza contrasto va verificata);
-  - barre per lobo: BV5/TBV arterioso (pruning) e rapporto A/V.
+  - tabella per lobo: volumi della maschera vascolare + rapporto A/V.
+Volumi di MASCHERA, non ematici. Il pruning/BV5 e' ritirato (vedi vasculature.py).
 
 Run nel work dir dopo vasculature.py + viz.py. Output: out/av_viz.html.
 """
@@ -44,12 +45,10 @@ if anch:
     traces.append(anch)
 
 lobi = [k for k in per if k != 'CENTRAL']
-lobi.sort(key=lambda k: (per[k].get('bv5_frac') or 0))
-bv5 = [round(100 * (per[k].get('bv5_frac') or 0), 1) for k in lobi]
-avr = [per[k].get('av_ratio') for k in lobi]
+lobi.sort(key=lambda k: -(per[k].get('art_ml') or 0))
 rows = ''.join(
     f"<tr><td>{k}</td><td>{per[k].get('art_ml')}</td><td>{per[k].get('vein_ml')}</td>"
-    f"<td>{per[k].get('av_ratio')}</td><td>{per[k].get('bv5_frac')}</td></tr>"
+    f"<td>{per[k].get('av_ratio')}</td></tr>"
     for k in lobi)
 
 name = os.environ.get('AIRWAYLAB_CASE', 'caso')
@@ -86,12 +85,11 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <h1>Arterie e vene polmonari</h1>
 <p class="sub">{name} · maschere DL separate (TotalSegmentator) · le ancore <b>D</b>/<b>S</b> ruotano con l'anatomia</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
-  ⚠ <b>Esplorativo, strutturale (non perfusione).</b> Separazione A/V su TC senza contrasto: <b>guarda prima questa vista come QC</b>. BVn stimato via EDT (approssimazione), dipendente da kernel/dose.</div>
+  ⚠ <b>Esplorativo. Volumi della MASCHERA vascolare, non volume ematico né perfusione</b> (TC senza contrasto). Separazione A/V da verificare: <b>guarda prima questa vista come QC</b>. Il pruning / BV5 (piccoli vasi) è stato <b>ritirato</b>: la stima voxelwise da EDT non è valida (serve un metodo di calibro segmentale/scale-space).</div>
 <div class="tiles">
-  <div class="tile"><div class="k">Volume arterioso</div><div class="v">{av['arterie_ml']} <span class="u">ml</span></div></div>
-  <div class="tile"><div class="k">Volume venoso</div><div class="v">{av['vene_ml']} <span class="u">ml</span></div></div>
-  <div class="tile"><div class="k">Rapporto A/V</div><div class="v">{av['av_ratio']}</div></div>
-  <div class="tile"><div class="k">BV5/TBV arterioso</div><div class="v">{av['arterioso_globale'].get('bv5_frac')}</div><div class="u">piccoli vasi / totale</div></div>
+  <div class="tile"><div class="k">Volume maschera arteriosa</div><div class="v">{av['arterie_ml']} <span class="u">ml</span></div></div>
+  <div class="tile"><div class="k">Volume maschera venosa</div><div class="v">{av['vene_ml']} <span class="u">ml</span></div></div>
+  <div class="tile"><div class="k">Rapporto A/V</div><div class="v">{av['av_ratio']}</div><div class="u">volumi maschera</div></div>
 </div>
 <div class="card">
   <h2>Arterie (rosso) e vene (blu) — ruotabile, con riferimento D/S</h2>
@@ -101,13 +99,9 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
     <span><span class="sw" style="background:#2a78d6"></span>vene</span></div>
 </div>
 <div class="card">
-  <h2>Per lobo: pruning arterioso e rapporto A/V</h2>
-  <p class="note">Blu = BV5/TBV arterioso (quota di volume nei piccoli vasi; un calo relativo indica pruning). Il rapporto A/V è nella tabella. Confronta i lobi tra loro.</p>
-  <div id="bars"></div>
-</div>
-<div class="card">
   <h2>Tabella regionale</h2>
-  <table><thead><tr><th>Lobo</th><th>arterie (ml)</th><th>vene (ml)</th><th>A/V</th><th>BV5/TBV art</th></tr></thead>
+  <p class="note">Volumi della maschera vascolare per lobo (non ematici). Il pruning / BV5 è stato ritirato in attesa di un metodo di calibro validato.</p>
+  <table><thead><tr><th>Lobo</th><th>arterie (ml)</th><th>vene (ml)</th><th>A/V</th></tr></thead>
   <tbody>{rows}</tbody></table>
 </div>
 </div></div>
@@ -117,12 +111,6 @@ Plotly.newPlot('av3d', __TRACES__, {{
   scene:{{ xaxis:{{visible:false}}, yaxis:{{visible:false}}, zaxis:{{visible:false}},
           aspectmode:'data', camera:{{eye:{{x:0,y:-1.7,z:0.15}},up:{{x:0,y:0,z:1}}}},
           bgcolor:'rgba(0,0,0,0)' }}, paper_bgcolor:'rgba(0,0,0,0)' }},
-  {{displayModeBar:false, responsive:true}});
-const L={json.dumps(lobi)}, BV5={json.dumps(bv5)};
-Plotly.newPlot('bars', [{{type:'bar', x:L, y:BV5, marker:{{color:'#2a78d6'}},
-  hovertemplate:'%{{x}} · BV5/TBV %{{y}}%<extra></extra>'}}], {{
-  margin:{{l:44,r:10,t:8,b:30}}, yaxis:{{title:{{text:'BV5/TBV %'}},color:'#898781'}},
-  xaxis:{{color:'#898781'}}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)' }},
   {{displayModeBar:false, responsive:true}});
 </script></body></html>"""
 
