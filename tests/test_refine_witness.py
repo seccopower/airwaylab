@@ -110,6 +110,55 @@ def test_air_witness_production_gate_and_borderlines():
     assert air_witness(np.array([])) is False
 
 
+def test_contour_escape_gate_is_pure_and_has_exact_boundary():
+    """Il gate `contour_escaped` e' un puro test geometrico (nessuna logica di
+    aid): d_mean > K*d_mask + C. Verifica il bordo ESATTO e appena sopra."""
+    from qc_params import ESCAPE_C, ESCAPE_K, contour_escaped
+
+    d_mask = 8.0
+    thr = ESCAPE_K * d_mask + ESCAPE_C          # soglia esatta
+    assert contour_escaped(thr, d_mask) is False        # uguale: NON sfugge (>)
+    assert contour_escaped(thr + 1e-6, d_mask) is True  # appena sopra: sfugge
+    assert contour_escaped(thr - 1e-6, d_mask) is False
+    assert contour_escaped(None, d_mask) is False
+    assert contour_escaped(5.0, None) is False
+
+
+def test_central_aids_come_from_the_anatomy_contract():
+    """CENTRAL_AIDS non deve duplicare una lista: e' DERIVATO dalla sorgente
+    anatomica normativa (anatomy.ALR4_AIDS), cosi' le due non divergono."""
+    import anatomy
+    from qc_params import CENTRAL_AIDS
+    assert CENTRAL_AIDS is anatomy.ALR4_AIDS or CENTRAL_AIDS == anatomy.ALR4_AIDS
+    assert {'TRACHEA', 'RMB', 'LMB', 'BI'} <= set(CENTRAL_AIDS)
+
+
+def test_escape_decision_exempts_central_but_flags_it():
+    """Policy del chiamante (witness.py), estratta in funzione pura testabile.
+    Quando la maschera DL sotto-riempie una grande via centrale, la half-max
+    corretta 'sfugge': l'endpoint va PRESERVATO ma con soft-flag di audit, mai
+    reso indistinguibile da una misura concordante con la maschera. In periferia
+    resta hard-demotion."""
+    from qc_params import (CENTRAL_AIDS, ESCAPE_EXEMPT_NOTE, escape_decision)
+
+    d_mask, d_true = 11.0, 18.0                 # trachea sotto-riempita ~18 mm
+    # via centrale: NON demolita, ma flaggata
+    for aid in CENTRAL_AIDS:
+        demote, note = escape_decision(d_true, d_mask, aid)
+        assert demote is False and note == ESCAPE_EXEMPT_NOTE
+    # via periferica reale (aid dal contratto anatomico) con stesso overshoot:
+    # demolita, nessun flag
+    from anatomy import to_aid
+    periph = to_aid('B10 dx')                   # -> 'B10_R'
+    assert periph and periph not in CENTRAL_AIDS
+    assert escape_decision(d_true, d_mask, periph) == (True, '')
+    assert escape_decision(d_true, d_mask, None) == (True, '')
+    # misura concordante con la maschera: gate non scatta -> nessun flag,
+    # nemmeno sulle vie centrali (un 'ok' centrale resta distinguibile)
+    assert escape_decision(12.0, 12.5, 'TRACHEA') == (False, '')
+    assert escape_decision(3.0, 2.6, periph) == (False, '')
+
+
 def test_resolution_floor_conservative_and_orientation_dependent():
     """The conservative floor uses the WORST native axis (slice thickness
     included); the per-branch floor projects the native spacings into the
@@ -162,7 +211,7 @@ def test_branch_floor_uses_local_tangents_not_the_chord():
 def test_split_reportable_invariant_and_csv_cardinality():
     """UNIT-LEVEL invariant: split_reportable() (the single function through
     which CPR routes every sample) can only put a value on one channel; CSV
-    schema and generated row both have 23 fields. This does NOT execute the
+    schema and generated row both have 24 fields. This does NOT execute the
     pipeline: artifact-level verification (profiles.json/cpr.json of a full
     run) was done manually on the development case; a synthetic end-to-end
     phantom test is tracked in issue #2."""
@@ -176,9 +225,14 @@ def test_split_reportable_invariant_and_csv_cardinality():
             else:
                 assert clin is None and raw == v
 
-    assert len(CSV_COLUMNS) == 23
+    assert len(CSV_COLUMNS) == 24            # +1: qc_note (audit soft-flag)
+    assert 'qc_note' in CSV_COLUMNS
     dummy = {'id': 'br000', 'name': 'trachea', 'gen': 0, 'length': 100.0}
     assert len(csv_row(dummy)) == len(CSV_COLUMNS)
+    # una via centrale esente porta il soft-flag nella riga CSV
+    dummy2 = {'id': 'br001', 'name': 'trachea', 'gen': 0, 'length': 100.0,
+              'qc': 'ok', 'qc_note': 'central-mask-underfill'}
+    assert 'central-mask-underfill' in csv_row(dummy2)
 
 
 def test_provenance_keys_written_and_exposed():
