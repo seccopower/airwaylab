@@ -35,6 +35,14 @@ import SimpleITK as sitk
 BAD_SUBSTR = ('scout', 'localizer', 'topogram', 'surview', 'dose', 'report',
               'screen save', 'secondary', 'reformat', 'coronal', 'sagittal')
 BAD_TOKEN = {'mpr', 'cor', 'sag', 'vrt', 'mip', 'ssd', 'bone', 'osso'}
+# kernel di ricostruzione: per le vie aeree serve un kernel POLMONARE/nitido
+# (bordi netti di lume e parete). Il kernel MORBIDO/mediastinico sfuma i bordi
+# e degrada segmentazione e misura, pur restando ottimo per la densitometria;
+# a parita' di strato va quindi scelto quello polmonare.
+LUNG_KERNEL = ('polmon', 'lung', 'parench', 'sharp', 'b50', 'b56', 'b57', 'b60',
+               'b70', 'bl5', 'bl6', 'bl7', 'fc5', 'fc8', 'yc')
+SOFT_KERNEL = ('mediastin', 'soft', 'standard', 'b20', 'b26', 'b30', 'b31',
+               'b35', 'fc0', 'fc1', 'fc2')
 SKIP_DIRS = {'express', 'ihe_pdi', 'reports', 'locale', 'bin', 'config', 'help'}
 
 
@@ -110,6 +118,11 @@ def score(meta, n_images):
         s += max(0.0, 100.0 - 40.0 * max(0.0, meta['thick'] - 1.5))
         s += 60.0 if meta['thick'] <= 1.5 else 0.0
     s += min(120.0, n_images / 5.0)                 # piu' immagini = piu' fine, con tetto
+    # kernel: a parita' d'altro, polmonare >> mediastinico/morbido per le vie aeree
+    if any(k in d for k in LUNG_KERNEL):
+        s += 200.0
+    if any(k in d for k in SOFT_KERNEL):
+        s -= 200.0
     return s
 
 
