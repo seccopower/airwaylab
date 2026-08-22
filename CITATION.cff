@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use AirwayLab in your research, please cite it as below."
+title: "AirwayLab: transparent quantitative CT analysis of the airways"
+authors:
+  - family-names: "Novali"
+    given-names: "Mauro"
+version: 1.0.0
+date-released: 2026-08-22
+url: "https://github.com/seccopower/airwaylab"
+repository-code: "https://github.com/seccopower/airwaylab"
+license: Apache-2.0

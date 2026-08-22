@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+*_work/
+*.nii.gz
+*.nii
+out/
+*_report.html
+*_branches.csv
+*_qc_*.png
+CITATION..cff

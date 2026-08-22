@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "airwaylab"
+version = "1.0.0"
+description = "Transparent quantitative CT analysis of the airways: segmentation, caliber, wall, territories, vessels, mucus plug candidates, interactive reports."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+  { name = "Mauro Novali" },
+]
+keywords = ["airway", "chest CT", "quantitative imaging", "bronchi", "radiology", "research"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+  "numpy>=1.26,<3",
+  "scipy>=1.11,<2",
+  "SimpleITK>=2.3,<3",
+  "scikit-image>=0.22,<0.27",
+  "networkx>=3.1,<4",
+  "pillow>=10,<12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/seccopower/airwaylab"
+
+[project.scripts]
+airwaylab = "airwaylab.cli:main"
+
+[tool.setuptools]
+packages = ["airwaylab", "airwaylab.pipeline"]
+
+[tool.setuptools.package-data]
+airwaylab = ["assets/*"]

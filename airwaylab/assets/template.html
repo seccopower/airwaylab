@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mappa quantitativa delle vie aeree — prototipo</title>
+<script>__PLOTLY__</script>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6;
+    --gen-0: #86b6ef; --gen-1: #5598e7; --gen-2: #2a78d6; --gen-3: #1c5cab; --gen-4: #0d366b;
+    --mesh: #b8b7b0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --gen-0: #9ec5f4; --gen-1: #6da7ec; --gen-2: #3987e5; --gen-3: #256abf; --gen-4: #184f95;
+      --mesh: #52514e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--text-primary);
+    min-height: 100vh; padding: 24px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 0 0 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .k { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .tile .v { font-size: 26px; font-weight: 650; }
+  .tile .u { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+  .card .note { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin: 8px 0 2px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .row2 { grid-template-columns: 1fr; } }
+  #map3d { width: 100%; height: 560px; }
+  .chart { width: 100%; height: 300px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 12px;
+       border-bottom: 1px solid var(--baseline); padding: 6px 8px; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  td.name { font-variant-numeric: normal; }
+  .foot { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+  <h1>Mappa quantitativa delle vie aeree</h1>
+  <p class="sub">__SUBTITLE__</p>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Volume albero aereo</div><div class="v" id="t-vol"></div></div>
+    <div class="tile"><div class="k">Rami identificati</div><div class="v" id="t-br"></div></div>
+    <div class="tile"><div class="k">Generazioni</div><div class="v" id="t-gen"></div></div>
+    <div class="tile"><div class="k">Diametro trachea</div><div class="v" id="t-tra"></div></div>
+    <div class="tile"><div class="k">Volume polmoni</div><div class="v" id="t-lung"></div></div>
+    <div class="tile"><div class="k">Dysanapsis <span class="u">(MESA: 0,033 ± 0,004)</span></div><div class="v" id="t-dys"></div></div>
+    <div class="tile"><div class="k">ALR4 <span class="u">(Shimada, sani: ~0,09 M / 0,08 F)</span></div><div class="v" id="t-alr4"></div></div>
+    <div class="tile"><div class="k">LAA-950 <span class="u">(kernel duro: sovrastimato)</span></div><div class="v" id="t-laa"></div></div>
+    <div class="tile"><div class="k">Esponente di Murray</div><div class="v" id="t-mur"></div></div>
+    <div class="tile"><div class="k">Volume vascolare</div><div class="v" id="t-tbv"></div></div>
+    <div class="tile"><div class="k">BV5 (vasi piccoli)</div><div class="v" id="t-bv5"></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Albero bronchiale 3D</h2>
+    <p class="note">Trascina per ruotare, rotella per zoom. Passa il mouse su un ramo per le misure. Colore = generazione.</p>
+    <div class="legend" id="legend3d"></div>
+    <div id="map3d"></div>
+  </div>
+
+  <div class="row2">
+    <div class="card">
+      <h2>Calibro del lume per generazione</h2>
+      <p class="note">Un punto per ramo; la linea unisce le mediane.</p>
+      <div id="chart-diam" class="chart"></div>
+    </div>
+    <div class="card">
+      <h2>Spessore di parete per generazione</h2>
+      <p class="note">Solo settori confinanti col parenchima; un punto per ramo, linea = mediane.</p>
+      <div id="chart-wall" class="chart"></div>
+    </div>
+    <div class="card">
+      <h2>Numero di rami per generazione</h2>
+      <p class="note">Rami rilevati a questa risoluzione.</p>
+      <div id="chart-count" class="chart"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Territorio servito vs calibro (legge di Murray)</h2>
+    <p class="note">Ogni punto è un ramo QC-ok: quanti ml di parenchima serve, in funzione del suo calibro (scale log).
+       La linea è il fit: territorio ∝ calibro^<span id="mur-exp"></span> (teoria di Murray: esponente 3).</p>
+    <div id="chart-murray" class="chart"></div>
+  </div>
+
+  <div class="card">
+    <h2>Discordanza aereo-vascolare</h2>
+    <p class="note">Per ogni punto del polmone: distanza dall'albero aereo visibile meno distanza dai vasi ≥2&#8202;mm.
+       Blu = vie aeree vicine; rosso = parenchima vascolarizzato ma lontano dalle vie visibili. Su un singolo esame il rosso riflette
+       soprattutto il limite di visibilità dei bronchi rispetto ai vasi di pari calibro: leggere le <b>asimmetrie regionali</b> e,
+       nel follow-up, i <b>cambiamenti</b> — un'area che si arrossa ha perso vie aeree (occlusione?); una che si schiarisce le ha riguadagnate.</p>
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+      <img id="dual-img" style="max-width:420px;width:100%;border-radius:8px" alt="mappa discordanza">
+      <div style="flex:1;min-width:220px;font-size:13px;color:var(--text-secondary)" id="dual-stats"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Bronco vs arteria satellite (BA ratio)</h2>
+    <p class="note">Ogni punto è una coppia bronco–arteria (accoppiamento geometrico: vaso dominante vicino e parallelo).
+       La diagonale è BA = 1: sopra la diagonale il lume bronchiale supera il calibro dell'arteria.
+       Valori assoluti da calibrare (bordo lume half-max vs soglia vasale): leggere i confronti, non i singoli valori.</p>
+    <div id="chart-ba" class="chart"></div>
+  </div>
+
+  <div class="card">
+    <h2>Profilo longitudinale del ramo</h2>
+    <p class="note" id="prof-note">Clicca una riga della tabella qui sotto per vedere calibro e parete lungo l'asse del ramo (sezioni ogni millimetro). I tratti mancanti sono sezioni scartate dal QC (giunzioni, tagli obliqui).</p>
+    <div id="chart-prof" class="chart"></div>
+  </div>
+
+  <div class="card">
+    <h2>CPR rettificata + profilo <span style="font-weight:400;font-size:12px;color:var(--muted)">(immagine e misure sullo stesso asse millimetrico)</span></h2>
+    <p class="note">La via aerea distesa in orizzontale; sotto, calibro e parete alla stessa posizione in mm.
+       Muovi il mouse sul grafico: il cursore si sposta anche sull'immagine. Le linee verticali segnano l'inizio dei rami attraversati.</p>
+    <div id="cpr-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div id="cpr-imgwrap" style="position:relative;width:100%">
+      <img id="cpr-img" style="width:100%;display:block;border-radius:6px" alt="CPR">
+      <div id="cpr-cursor" style="position:absolute;top:0;bottom:0;width:2px;background:#2a78d6;display:none"></div>
+    </div>
+    <div id="cpr-chart" style="width:100%;height:280px"></div>
+    <p class="note" style="margin-top:8px"><b>Biopsie bronchiali</b> — pianifica o registra i siti bioptici sulla rotta:
+      <button id="bio-mode" style="font:inherit;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);padding:2px 8px">marcatura: OFF</button>
+      con marcatura ON, un click sul grafico segna il sito alla distanza dalla carena cliccata; ogni sito riporta le misure TC locali.
+      <button id="copy-bio" style="font:inherit;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);padding:2px 8px">copia biopsie</button></p>
+    <table id="bio-tbl" style="display:none;font-size:13px;width:100%;border-collapse:collapse">
+      <thead><tr><th style="text-align:left">rotta</th><th>mm dalla carena</th><th>Ø locale (mm)</th><th>parete locale (mm)</th><th>WA% locale</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Candidati mucus plug <span style="font-weight:400;font-size:12px;color:var(--muted)">(prototipo proponi-e-conferma)</span></h2>
+    <p class="note">Terminali di calibro &ge; 2,5&#8202;mm con densità di tessuto molle oltre il moncone (esclusi aria e vaso).
+       Nell'immagine: il lume arriva da sinistra e si interrompe alla linea blu; a destra c'è ciò che ne occupa la continuazione.
+       Barra = 10&#8202;mm. Giudica tu: <b>Plug</b> / <b>Non plug</b> / <b>Dubbio</b>. <span id="plug-count"></span>
+       <button id="copy-plugs" style="font:inherit;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);padding:2px 8px">copia giudizi</button></p>
+    <table id="plug-tbl">
+      <thead><tr>
+        <th>Continuazione</th><th>Zona</th><th>Gen.</th><th>Ø moncone (mm)</th><th>HU oltre</th>
+        <th>Testimone vascolare</th><th>Territorio a valle (ml)</th><th>Giudizio</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="note" id="plug-empty" style="display:none">Nessun candidato con i criteri attuali.</p>
+  </div>
+
+  <div class="card">
+    <h2>Misure per ramo</h2>
+    <p class="note">Diametro = equivalente d'area del bordo half-max sulla sezione perpendicolare; parete = FWHM su raggi radiali.
+       Contorno <span style="color:#2a78d6">blu</span> = lume (half-max); <span style="color:#eb6834">arancio</span> = bordo esterno della parete, solo nei settori dove la parete non tocca vasi o mediastino. La spunta include/esclude il ramo dai grafici e dalle statistiche: <span id="incl-count"></span>.
+       <button id="copy-excl" style="font:inherit;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);padding:2px 8px">copia elenco esclusi</button></p>
+    <table id="tbl">
+      <thead><tr>
+        <th></th><th>Sezione</th><th>Ramo</th><th>Nome</th><th>Gen.</th><th>Lunghezza (mm)</th>
+        <th>Ø medio (mm)</th><th>Ø min (mm)</th><th>Parete (mm) · settori validi</th><th>WA%</th><th>QC</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <p class="foot">
+    Limiti del prototipo: lo spessore parietale misurato con FWHM è vicino al limite di risoluzione della TC
+    (tende a sovrastimare le pareti sottili e ad appiattire le differenze tra generazioni) e i rami oltre
+    l'8ª–12ª diramazione non sono rilevabili con la crescita regionale a soglia. Strumento di ricerca:
+    non usare per decisioni cliniche.
+  </p>
+</div>
+</div>
+
+<script id="airway-data" type="application/json">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('airway-data').textContent);
+
+function cssVar(name) {
+  return getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(name).trim();
+}
+const GEN_LABELS = ['Gen 0 — trachea', 'Gen 1 — principali', 'Gen 2 — lobari', 'Gen 3', 'Gen ≥4'];
+const genClass = g => Math.min(g, 4);
+
+function fmt(v, unit) { return v == null ? '–' : v.toLocaleString('it-IT') + (unit || ''); }
+
+// ---- stat tiles ----
+document.getElementById('t-vol').innerHTML = fmt(DATA.meta.volume_ml) + '<span class="u">ml</span>';
+document.getElementById('t-br').textContent = DATA.meta.n_branches;
+document.getElementById('t-gen').textContent = '0–' + DATA.meta.gen_max;
+document.getElementById('t-tra').innerHTML = fmt(DATA.meta.trachea_d) + '<span class="u">mm</span>';
+const L = DATA.meta.lung, MU = DATA.meta.murray;
+document.getElementById('t-lung').innerHTML = L ? fmt(L.lung_volume_l) + '<span class="u">l</span>' : '–';
+document.getElementById('t-dys').textContent = L && L.dysanapsis != null ? L.dysanapsis.toLocaleString('it-IT') : '–';
+document.getElementById('t-alr4').textContent = L && L.alr4 != null ? L.alr4.toLocaleString('it-IT') : '–';
+document.getElementById('t-laa').innerHTML = L ? fmt(L.laa950_pct) + '<span class="u">%</span>' : '–';
+const VE = DATA.meta.vessels;
+document.getElementById('t-tbv').innerHTML = VE ? fmt(Math.round(VE.tbv_ml)) + '<span class="u">ml</span>' : '–';
+document.getElementById('t-bv5').innerHTML = VE ? Math.round(VE.bv5_frac * 100) + '<span class="u">% del TBV</span>' : '–';
+document.getElementById('t-mur').innerHTML = MU && MU.slope != null
+  ? MU.slope.toLocaleString('it-IT') + '<span class="u">R² ' + MU.r2.toLocaleString('it-IT') + '</span>' : '–';
+
+// ---- legend ----
+const legendEl = document.getElementById('legend3d');
+GEN_LABELS.forEach((lab, i) => {
+  const s = document.createElement('span');
+  s.innerHTML = `<span class="sw" style="background:${cssVar('--gen-' + i)}"></span>${lab}`;
+  legendEl.appendChild(s);
+});
+
+function baseLayout() {
+  return {
+    paper_bgcolor: cssVar('--surface-1'),
+    plot_bgcolor: cssVar('--surface-1'),
+    font: { family: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: cssVar('--text-secondary'), size: 12 },
+    margin: { l: 48, r: 12, t: 8, b: 40 },
+    showlegend: false,
+  };
+}
+
+// ---- 3D map ----
+function render3d() {
+  const axis = { showbackground: false, showgrid: false, zeroline: false,
+                 showticklabels: false, title: { text: '' }, showspikes: false };
+  const traces = [{
+    type: 'mesh3d',
+    x: DATA.mesh.x, y: DATA.mesh.y, z: DATA.mesh.z,
+    i: DATA.mesh.i, j: DATA.mesh.j, k: DATA.mesh.k,
+    color: cssVar('--mesh'), opacity: 0.18, hoverinfo: 'skip',
+    lighting: { ambient: 0.55, diffuse: 0.6, specular: 0.1 },
+    flatshading: false,
+  }];
+  DATA.branches.forEach(b => {
+    const c = cssVar('--gen-' + genClass(b.gen));
+    const label = (b.name ? b.name : 'ramo ' + b.id);
+    const hover = `<b>${label}</b><br>generazione ${b.gen}` +
+      `<br>lunghezza ${fmt(b.len, ' mm')}<br>Ø medio ${fmt(b.d, ' mm')}` +
+      `<br>Ø min ${fmt(b.dmin, ' mm')}` +
+      (b.wall ? `<br>parete ${fmt(b.wall, ' mm')} · WA ${fmt(b.wa, '%')}` : '') +
+      (b.terr ? `<br>territorio servito ${fmt(Math.round(b.terr), ' ml')}` : '') +
+      (b.ba ? `<br>arteria satellite Ø ${fmt(b.vd, ' mm')} · BA ${fmt(b.ba)}` : '');
+    traces.push({
+      type: 'scatter3d', mode: 'lines',
+      x: b.x, y: b.y, z: b.z,
+      line: { color: c, width: Math.max(3, Math.min(12, b.d)) },
+      hovertemplate: hover + '<extra></extra>',
+      hoverlabel: { bgcolor: cssVar('--surface-1'), bordercolor: c,
+                    font: { color: cssVar('--text-primary') } },
+    });
+  });
+  // etichette anatomiche visibili sui rami nominati (escl. trachea/principali)
+  const named = DATA.branches.filter(b => b.name && /^(B|lobare|lingu|bronco int)/.test(b.name));
+  if (named.length) {
+    traces.push({
+      type: 'scatter3d', mode: 'text',
+      x: named.map(b => b.x[Math.floor(b.x.length / 2)]),
+      y: named.map(b => b.y[Math.floor(b.y.length / 2)]),
+      z: named.map(b => b.z[Math.floor(b.z.length / 2)]),
+      text: named.map(b => b.name.replace('lobare ', 'lob. ').replace('bronco intermedio', 'interm.')),
+      textfont: { size: 11, color: cssVar('--text-primary') },
+      hoverinfo: 'skip',
+    });
+  }
+  const layout = Object.assign(baseLayout(), {
+    scene: {
+      xaxis: axis, yaxis: axis, zaxis: axis,
+      aspectmode: 'data',
+      camera: { eye: { x: 0.0, y: -1.9, z: 0.25 }, up: { x: 0, y: 0, z: 1 } },
+      bgcolor: cssVar('--surface-1'),
+    },
+    margin: { l: 0, r: 0, t: 0, b: 0 },
+  });
+  Plotly.newPlot('map3d', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- inclusione: auto-QC + esclusioni del radiologo ----
+const PRE_EXCLUDED = new Set(__PRE_EXCLUDED__);
+DATA.branches.forEach(b => {
+  b.excluded = (b.qc && b.qc !== 'ok') || PRE_EXCLUDED.has(b.id);
+});
+const included = () => DATA.branches.filter(b => !b.excluded);
+
+// ---- diameter vs generation ----
+function renderDiam() {
+  const inc = included();
+  const gens = [...new Set(inc.map(b => b.gen))].sort((a, b) => a - b);
+  const medians = gens.map(g => {
+    const v = inc.filter(b => b.gen === g).map(b => b.d).sort((a, b) => a - b);
+    return v[Math.floor(v.length / 2)];
+  });
+  const c = cssVar('--series-1');
+  const traces = [
+    {
+      type: 'scatter', mode: 'markers',
+      x: inc.map(b => b.gen), y: inc.map(b => b.d),
+      marker: { color: c, size: 8, opacity: 0.45 },
+      hovertemplate: 'gen %{x} · Ø %{y:.1f} mm<extra></extra>',
+    },
+    {
+      type: 'scatter', mode: 'lines+markers',
+      x: gens, y: medians,
+      line: { color: c, width: 2 }, marker: { color: c, size: 8 },
+      hovertemplate: 'gen %{x} · mediana %{y:.1f} mm<extra></extra>',
+    },
+  ];
+  const layout = Object.assign(baseLayout(), {
+    xaxis: { title: { text: 'generazione' }, dtick: 1, gridcolor: cssVar('--grid'),
+             zeroline: false, linecolor: cssVar('--baseline') },
+    yaxis: { title: { text: 'Ø lume (mm)' }, gridcolor: cssVar('--grid'),
+             zeroline: false, rangemode: 'tozero' },
+  });
+  Plotly.newPlot('chart-diam', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- wall thickness vs generation ----
+function renderWall() {
+  const inc = included().filter(b => b.wall != null);
+  const gens = [...new Set(inc.map(b => b.gen))].sort((a, b) => a - b);
+  const medians = gens.map(g => {
+    const v = inc.filter(b => b.gen === g).map(b => b.wall).sort((a, b) => a - b);
+    return v[Math.floor(v.length / 2)];
+  });
+  const c = cssVar('--series-1');
+  const traces = [
+    {
+      type: 'scatter', mode: 'markers',
+      x: inc.map(b => b.gen), y: inc.map(b => b.wall),
+      customdata: inc.map(b => b.wok == null ? '–' : Math.round(b.wok) + '%'),
+      marker: { color: c, size: 8, opacity: 0.45 },
+      hovertemplate: 'gen %{x} · parete %{y:.2f} mm · settori validi %{customdata}<extra></extra>',
+    },
+    {
+      type: 'scatter', mode: 'lines+markers',
+      x: gens, y: medians,
+      line: { color: c, width: 2 }, marker: { color: c, size: 8 },
+      hovertemplate: 'gen %{x} · mediana %{y:.2f} mm<extra></extra>',
+    },
+  ];
+  const layout = Object.assign(baseLayout(), {
+    xaxis: { title: { text: 'generazione' }, dtick: 1, gridcolor: cssVar('--grid'),
+             zeroline: false, linecolor: cssVar('--baseline') },
+    yaxis: { title: { text: 'parete (mm)' }, gridcolor: cssVar('--grid'),
+             zeroline: false, rangemode: 'tozero' },
+  });
+  Plotly.newPlot('chart-wall', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- branch count ----
+function renderCount() {
+  const inc = included();
+  const gens = [...new Set(inc.map(b => b.gen))].sort((a, b) => a - b);
+  const counts = gens.map(g => inc.filter(b => b.gen === g).length);
+  const layout = Object.assign(baseLayout(), {
+    xaxis: { title: { text: 'generazione' }, dtick: 1, zeroline: false,
+             linecolor: cssVar('--baseline'), gridcolor: 'rgba(0,0,0,0)' },
+    yaxis: { gridcolor: cssVar('--grid'), zeroline: false },
+    bargap: 0.45,
+  });
+  Plotly.newPlot('chart-count', [{
+    type: 'bar', x: gens, y: counts,
+    marker: { color: cssVar('--series-1') },
+    hovertemplate: 'gen %{x} · %{y} rami<extra></extra>',
+  }], layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- longitudinal profile ----
+let profBranch = null;
+function renderProf() {
+  const el = document.getElementById('chart-prof');
+  const b = profBranch || DATA.branches.find(x => x.name === 'trachea') || DATA.branches[0];
+  if (!b || !b.prof) { el.innerHTML = '<p class="note">Nessun profilo per questo ramo.</p>'; return; }
+  profBranch = b;
+  const nr = b.prof.nonreportable;
+  document.getElementById('prof-note').textContent = nr
+    ? `${b.name || b.id} — gen ${b.gen}, ${b.len} mm. ⚠ NON REPORTABILE (${nr}): ` +
+      'curve grezze mostrate solo per audit visivo, NON sono misure valide.'
+    : `${b.name || b.id} — gen ${b.gen}, ${b.len} mm. Linea blu = Ø lume; arancio = parete. ` +
+      'I tratti mancanti sono sezioni scartate dal QC.';
+  const c1 = cssVar('--series-1');
+  const traces = nr ? [
+    { type: 'scatter', mode: 'lines', name: 'Ø raw — NON REPORTABILE',
+      x: b.prof.s, y: b.prof.d_raw_nonreportable || [], connectgaps: false,
+      line: { color: '#8a8a8a', width: 1.5, dash: 'dot' },
+      hovertemplate: '%{x} mm · raw %{y:.1f} mm — NON REPORTABILE<extra></extra>' },
+    { type: 'scatter', mode: 'lines', name: 'parete raw — NON REPORTABILE',
+      x: b.prof.s, y: b.prof.w_raw_nonreportable || [], connectgaps: false,
+      line: { color: '#b08968', width: 1.5, dash: 'dot' },
+      hovertemplate: '%{x} mm · parete raw %{y:.2f} mm — NON REPORTABILE<extra></extra>' },
+  ] : [
+    { type: 'scatter', mode: 'lines+markers', name: 'Ø lume',
+      x: b.prof.s, y: b.prof.d, connectgaps: false,
+      line: { color: c1, width: 2 }, marker: { size: 5, color: c1 },
+      hovertemplate: '%{x} mm · Ø %{y:.1f} mm<extra></extra>' },
+    { type: 'scatter', mode: 'lines+markers', name: 'parete',
+      x: b.prof.s, y: b.prof.w, connectgaps: false,
+      line: { color: '#eb6834', width: 2 }, marker: { size: 5, color: '#eb6834' },
+      hovertemplate: '%{x} mm · parete %{y:.2f} mm<extra></extra>' },
+  ];
+  const layout = Object.assign(baseLayout(), {
+    showlegend: true,
+    legend: { orientation: 'h', y: 1.12, font: { size: 12 } },
+    xaxis: { title: { text: 'posizione lungo il ramo (mm)' }, gridcolor: cssVar('--grid'),
+             zeroline: false, linecolor: cssVar('--baseline') },
+    yaxis: { title: { text: 'mm' }, gridcolor: cssVar('--grid'),
+             zeroline: false, rangemode: 'tozero' },
+  });
+  Plotly.newPlot('chart-prof', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- murray scatter ----
+function renderMurray() {
+  const el = document.getElementById('chart-murray');
+  const pts = included().filter(b => b.terr && b.terr > 10 && b.d);
+  if (!pts.length || !MU || MU.slope == null) { el.innerHTML = ''; return; }
+  document.getElementById('mur-exp').textContent = MU.slope.toLocaleString('it-IT');
+  const c = cssVar('--series-1');
+  const xs = pts.map(b => b.d), ys = pts.map(b => b.terr);
+  const xr = [Math.min(...xs) * 0.8, Math.max(...xs) * 1.2];
+  // linea di fit: log10(y) = slope*log10(x) + intercetta ricavata dal baricentro
+  const mx = xs.reduce((a, b) => a + Math.log10(b), 0) / xs.length;
+  const my = ys.reduce((a, b) => a + Math.log10(b), 0) / ys.length;
+  const icpt = my - MU.slope * mx;
+  const fx = [xr[0], xr[1]];
+  const fy = fx.map(x => Math.pow(10, MU.slope * Math.log10(x) + icpt));
+  const traces = [
+    { type: 'scatter', mode: 'markers',
+      x: xs, y: ys, text: pts.map(b => b.name || b.id),
+      marker: { color: c, size: 9, opacity: 0.55 },
+      hovertemplate: '<b>%{text}</b><br>Ø %{x:.1f} mm · territorio %{y:.0f} ml<extra></extra>' },
+    { type: 'scatter', mode: 'lines', x: fx, y: fy,
+      line: { color: cssVar('--baseline'), width: 2, dash: 'dot' }, hoverinfo: 'skip' },
+  ];
+  const layout = Object.assign(baseLayout(), {
+    xaxis: { title: { text: 'Ø lume (mm)' }, type: 'log', gridcolor: cssVar('--grid'),
+             zeroline: false, linecolor: cssVar('--baseline') },
+    yaxis: { title: { text: 'territorio (ml)' }, type: 'log', gridcolor: cssVar('--grid'), zeroline: false },
+  });
+  Plotly.newPlot('chart-murray', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- dual map ----
+(function(){
+  const D = DATA.meta.dual, P = DATA.meta.dual_png;
+  if (P) document.getElementById('dual-img').src = P;
+  if (D) document.getElementById('dual-stats').innerHTML =
+    `<p>Distanza mediana dalle vie aeree visibili: <b>${fmt(D.d_aw_med_mm, ' mm')}</b><br>` +
+    `Distanza mediana dai vasi ≥2 mm: <b>${fmt(D.d_ves_med_mm, ' mm')}</b><br>` +
+    `Delta mediano: <b>${fmt(D.delta_med_mm, ' mm')}</b><br>` +
+    `Polmone con delta > 15 mm: <b>${fmt(D.frac_delta_gt15_pct, '%')}</b><br>` +
+    `Polmone con delta > 20 mm: <b>${fmt(D.frac_delta_gt20_pct, '%')}</b></p>` +
+    `<p style="color:var(--muted)">Questi valori dipendono dalla profondità di segmentazione:
+     confrontarli solo a parità di pipeline (stessa versione) e soprattutto nel tempo sullo stesso paziente.</p>`;
+})();
+
+// ---- BA scatter ----
+function renderBA() {
+  const el = document.getElementById('chart-ba');
+  const pts = included().filter(b => b.ba && b.vd);
+  if (!pts.length) { el.innerHTML = '<p class="note">Nessuna coppia disponibile.</p>'; return; }
+  const c = cssVar('--series-1');
+  const lim = Math.max(...pts.map(b => Math.max(b.d, b.vd))) * 1.15;
+  const traces = [
+    { type: 'scatter', mode: 'lines', x: [0, lim], y: [0, lim],
+      line: { color: cssVar('--baseline'), width: 2, dash: 'dot' }, hoverinfo: 'skip' },
+    { type: 'scatter', mode: 'markers',
+      x: pts.map(b => b.vd), y: pts.map(b => b.d),
+      text: pts.map(b => (b.name || b.id) + ' · gen ' + b.gen),
+      marker: { color: c, size: 9, opacity: 0.55 },
+      hovertemplate: '<b>%{text}</b><br>arteria Ø %{x:.1f} mm · bronco Ø %{y:.1f} mm<extra></extra>' },
+  ];
+  const layout = Object.assign(baseLayout(), {
+    xaxis: { title: { text: 'Ø arteria satellite (mm)' }, gridcolor: cssVar('--grid'),
+             zeroline: false, linecolor: cssVar('--baseline'), range: [0, lim] },
+    yaxis: { title: { text: 'Ø lume bronchiale (mm)' }, gridcolor: cssVar('--grid'),
+             zeroline: false, range: [0, lim] },
+  });
+  Plotly.newPlot('chart-ba', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+// ---- CPR unificata ----
+(function(){
+  const C = DATA.meta.cpr;
+  const card = document.getElementById('cpr-imgwrap');
+  if (!C || !Object.keys(C).length) { card.parentElement.style.display = 'none'; return; }
+  const tabs = document.getElementById('cpr-tabs');
+  const img = document.getElementById('cpr-img');
+  const cursor = document.getElementById('cpr-cursor');
+  let current = null;
+  // ---- biopsie bronchiali: marcatura sito + misure TC locali ----
+  const BIOPSIES = __PRE_BIOPSIES__;   // [{rotta, s_mm, d_mm, parete_mm, wa_pct}]
+  let bioMode = false;
+  function localReadout(o, s) {
+    // campione piu' vicino sulla rotta; se il tratto e' declassato, dichiara
+    let best = -1, dist = 1e9;
+    (o.s || []).forEach((sv, i) => { const dd = Math.abs(sv - s); if (dd < dist) { dist = dd; best = i; } });
+    if (best < 0 || dist > 2) return { d: null, w: null, wa: null, nr: false };
+    const nr = o.reportable && o.reportable[best] === 0;
+    const d = nr ? null : o.d[best], w = nr ? null : o.w[best];
+    const wa = (d != null && w != null) ? Math.round(1000 * ((d/2+w)**2 - (d/2)**2) / (d/2+w)**2) / 10 : null;
+    return { d, w, wa, nr };
+  }
+  function bioForRoute(label) { return BIOPSIES.filter(b => b.rotta === label); }
+
+  function renderCprChart(o) {
+    const marks = o.marks || [];
+    const sMin = o.s_min ?? 0, sMax = o.s_max ?? o.len_mm;
+    const shapes = marks.map(m => ({ type: 'line', x0: m.s, x1: m.s, yref: 'paper', y0: 0, y1: 1,
+      line: { color: cssVar('--baseline'), width: 1, dash: 'dot' } }));
+    if (sMin < 0) {   // rotte dalla carena: linea della carena a s=0
+      shapes.push({ type: 'line', x0: 0, x1: 0, yref: 'paper', y0: 0, y1: 1,
+        line: { color: '#2a78d6', width: 2 } });
+    }
+    const annotations = marks.map((m, i) => ({ x: m.s, yref: 'paper', y: 1.04 + (i % 2) * 0.09,
+      text: m.label, showarrow: false, font: { size: 10, color: cssVar('--muted') }, xanchor: 'left' }));
+    bioForRoute(current).forEach(b => {
+      shapes.push({ type: 'line', x0: b.s_mm, x1: b.s_mm, yref: 'paper', y0: 0, y1: 1,
+        line: { color: '#c0392b', width: 2 } });
+      annotations.push({ x: b.s_mm, yref: 'paper', y: -0.16, text: '▲ biopsia',
+        showarrow: false, font: { size: 10, color: '#c0392b' } });
+    });
+    const traces = [
+      { type: 'scatter', mode: 'lines+markers', name: 'Ø lume',
+        x: o.s, y: o.d, connectgaps: false,
+        line: { color: cssVar('--series-1'), width: 2 }, marker: { size: 4 },
+        hovertemplate: '%{x} mm · Ø %{y:.1f} mm<extra></extra>' },
+      { type: 'scatter', mode: 'lines+markers', name: 'parete',
+        x: o.s, y: o.w, connectgaps: false,
+        line: { color: '#eb6834', width: 2 }, marker: { size: 4 },
+        hovertemplate: '%{x} mm · parete %{y:.2f} mm<extra></extra>' },
+    ];
+    // tratti del percorso su rami declassati dal witness: curve grezze
+    // esplicitamente NON REPORTABILI (audit visivo, non misure)
+    if (o.d_raw_nonreportable && o.d_raw_nonreportable.some(v => v !== null)) {
+      traces.push(
+        { type: 'scatter', mode: 'lines', name: 'Ø raw — NON REPORTABILE',
+          x: o.s, y: o.d_raw_nonreportable, connectgaps: false,
+          line: { color: '#8a8a8a', width: 1.5, dash: 'dot' },
+          hovertemplate: '%{x} mm · raw %{y:.1f} mm — NON REPORTABILE<extra></extra>' },
+        { type: 'scatter', mode: 'lines', name: 'parete raw — NON REPORTABILE',
+          x: o.s, y: o.w_raw_nonreportable || [], connectgaps: false,
+          line: { color: '#b08968', width: 1.5, dash: 'dot' },
+          hovertemplate: '%{x} mm · parete raw %{y:.2f} mm — NON REPORTABILE<extra></extra>' });
+    }
+    const layout = Object.assign(baseLayout(), {
+      showlegend: true, legend: { orientation: 'h', y: -0.25, font: { size: 12 } },
+      shapes, annotations,
+      margin: { l: 48, r: 12, t: 34, b: 40 },
+      xaxis: { title: { text: sMin < 0 ? 'distanza dalla carena (mm · 0 = carena)'
+                              : 'posizione dalla sommità della trachea (mm)' },
+               range: [sMin, sMax],
+               gridcolor: cssVar('--grid'), zeroline: false, linecolor: cssVar('--baseline') },
+      yaxis: { title: { text: 'mm' }, gridcolor: cssVar('--grid'), zeroline: false, rangemode: 'tozero' },
+    });
+    Plotly.newPlot('cpr-chart', traces, layout, { displayModeBar: false, responsive: true });
+    const gd = document.getElementById('cpr-chart');
+    gd.on('plotly_hover', ev => {
+      const s = ev.points[0].x;
+      cursor.style.display = 'block';
+      cursor.style.left = ((s - sMin) / (sMax - sMin) * img.clientWidth) + 'px';
+    });
+    gd.on('plotly_unhover', () => { cursor.style.display = 'none'; });
+    gd.on('plotly_click', ev => {
+      if (!bioMode) return;
+      const s = Math.round(ev.points[0].x * 10) / 10;
+      const r = localReadout(o, s);
+      BIOPSIES.push({ rotta: current, s_mm: s,
+        d_mm: r.d, parete_mm: r.w, wa_pct: r.wa,
+        non_reportabile: r.nr || undefined });
+      renderBioTable(); renderCprChart(o); renderBioOverlay(o);
+    });
+    renderBioOverlay(o);
+  }
+
+  function renderBioOverlay(o) {
+    const wrap = document.getElementById('cpr-imgwrap');
+    const sMin = o.s_min ?? 0, sMax = o.s_max ?? o.len_mm;
+    [...wrap.querySelectorAll('.bio-pin')].forEach(e => e.remove());
+    bioForRoute(current).forEach(b => {
+      const pin = document.createElement('div');
+      pin.className = 'bio-pin';
+      pin.textContent = '▼';
+      pin.style.cssText = 'position:absolute;top:-4px;color:#c0392b;font-size:14px;transform:translateX(-50%);pointer-events:none';
+      pin.style.left = ((b.s_mm - sMin) / (sMax - sMin) * img.clientWidth) + 'px';
+      wrap.appendChild(pin);
+    });
+  }
+
+  function renderBioTable() {
+    const tbl = document.getElementById('bio-tbl');
+    const tb = tbl.querySelector('tbody');
+    tb.innerHTML = '';
+    tbl.style.display = BIOPSIES.length ? '' : 'none';
+    BIOPSIES.forEach((b, i) => {
+      const tr = document.createElement('tr');
+      const fmt = v => v == null ? (b.non_reportabile ? 'non reportabile' : '–') : v;
+      tr.innerHTML = `<td>${b.rotta}</td><td style="text-align:center">${b.s_mm}</td>` +
+        `<td style="text-align:center">${fmt(b.d_mm)}</td><td style="text-align:center">${fmt(b.parete_mm)}</td>` +
+        `<td style="text-align:center">${fmt(b.wa_pct)}</td>` +
+        `<td style="text-align:center"><button data-i="${i}" style="cursor:pointer;border:none;background:none;color:#c0392b">✕</button></td>`;
+      tr.querySelector('button').addEventListener('click', () => {
+        BIOPSIES.splice(i, 1);
+        renderBioTable();
+        if (current) { renderCprChart(C[current]); renderBioOverlay(C[current]); }
+      });
+      tb.appendChild(tr);
+    });
+  }
+  function select(label) {
+    current = label;
+    const o = C[label];
+    img.src = o.img;
+    [...tabs.children].forEach(b => {
+      if (b.tagName !== 'BUTTON') return;
+      b.style.background = b.dataset.k === label ? cssVar('--series-1') : 'none';
+      b.style.color = b.dataset.k === label ? '#fff' : cssVar('--text-secondary');
+    });
+    renderCprChart(o);
+  }
+
+  document.getElementById('bio-mode').addEventListener('click', ev => {
+    bioMode = !bioMode;
+    ev.target.textContent = 'marcatura: ' + (bioMode ? 'ON' : 'OFF');
+    ev.target.style.background = bioMode ? '#c0392b' : 'none';
+    ev.target.style.color = bioMode ? '#fff' : cssVar('--text-secondary');
+  });
+  document.getElementById('copy-bio').addEventListener('click', ev => {
+    const j = JSON.stringify({ caso: document.title, biopsie: BIOPSIES }, null, 1);
+    navigator.clipboard && navigator.clipboard.writeText(j);
+    ev.target.textContent = 'copiato!';
+    setTimeout(() => { ev.target.textContent = 'copia biopsie'; }, 1500);
+  });
+  renderBioTable();
+  // tab raggruppate per lobo; ogni tab mostra la sintesi del tratto
+  // reportabile (percentuale, Ø minimo, parete mediana) come tooltip
+  let lastLobe = null;
+  Object.keys(C).forEach(label => {
+    const o = C[label];
+    if (o.lobo && o.lobo !== lastLobe) {
+      lastLobe = o.lobo;
+      const h = document.createElement('span');
+      h.textContent = o.lobo;
+      h.style.cssText = 'font-size:11px;color:var(--muted);align-self:center;margin-left:6px;flex-basis:auto';
+      if (tabs.children.length) h.style.marginLeft = '14px';
+      tabs.appendChild(h);
+    }
+    const b = document.createElement('button');
+    const s = o.summary || {};
+    b.textContent = label + (s.wall_med_rep != null ? ` · p ${s.wall_med_rep}` : '');
+    b.title = `${Math.round(o.len_mm)} mm · reportabile ${s.rep_pct ?? '?'}% · ` +
+              `Ø min ${s.d_min_rep ?? '–'} mm · parete mediana ${s.wall_med_rep ?? '–'} mm`;
+    b.dataset.k = label;
+    b.style.cssText = 'font:inherit;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:14px;background:none;color:var(--text-secondary);padding:3px 10px';
+    b.addEventListener('click', () => select(label));
+    tabs.appendChild(b);
+  });
+  select(Object.keys(C)[0]);
+})();
+
+// ---- plug candidates ----
+(function(){
+  const P = DATA.plugs || [];
+  const tb = document.querySelector('#plug-tbl tbody');
+  if (!P.length) {
+    document.getElementById('plug-tbl').style.display = 'none';
+    document.getElementById('plug-empty').style.display = '';
+    document.getElementById('copy-plugs').style.display = 'none';
+    return;
+  }
+  function updateCount() {
+    const conf = P.filter(p => p.verdict === 'plug');
+    const ml = conf.reduce((a, p) => a + (p.terr_ml || 0), 0);
+    document.getElementById('plug-count').innerHTML =
+      `<b>${conf.length}</b> confermati · territorio a valle totale <b>${Math.round(ml)} ml</b>.`;
+  }
+  P.forEach(p => {
+    p.verdict = 'dubbio';
+    const tr = document.createElement('tr');
+    const radios = ['plug', 'dubbio', 'non plug'].map(vv =>
+      `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="v-${p.pid}" value="${vv}" ${vv === 'dubbio' ? 'checked' : ''}> ${vv}</label>`).join('');
+    tr.innerHTML =
+      `<td><img src="${p.img}" style="max-width:220px;border-radius:6px;display:block"></td>` +
+      `<td class="name">${p.zona}<br><span style="color:var(--muted);font-size:11px">${p.branch}</span></td>` +
+      `<td>${p.gen}</td><td>${fmt(p.d_moncone)}</td><td>${fmt(p.hu_oltre)}</td>` +
+      `<td>${p.testimone != null ? Math.round(p.testimone * 100) + '%' : '–'}</td>` +
+      `<td>${p.terr_ml != null ? fmt(Math.round(p.terr_ml)) : '–'}</td>` +
+      `<td>${radios}</td>`;
+    tr.querySelectorAll('input').forEach(r => r.addEventListener('change', e => {
+      p.verdict = e.target.value; updateCount();
+    }));
+    tb.appendChild(tr);
+  });
+  updateCount();
+  document.getElementById('copy-plugs').addEventListener('click', () => {
+    const j = JSON.stringify(P.map(p => ({ pid: p.pid, branch: p.branch, zona: p.zona, verdict: p.verdict })), null, 1);
+    navigator.clipboard && navigator.clipboard.writeText(j);
+    document.getElementById('copy-plugs').textContent = 'copiato!';
+    setTimeout(() => document.getElementById('copy-plugs').textContent = 'copia giudizi', 1500);
+  });
+})();
+
+// ---- table ----
+function updateInclCount() {
+  const n = included().length;
+  document.getElementById('incl-count').textContent =
+    `${n} inclusi, ${DATA.branches.length - n} esclusi`;
+}
+const tb = document.querySelector('#tbl tbody');
+[...DATA.branches].sort((a, b) => a.gen - b.gen || b.d - a.d).forEach(b => {
+  const tr = document.createElement('tr');
+  const snap = b.snap
+    ? `<img src="${b.snap}" width="66" height="66" style="border-radius:6px;display:block" ` +
+      `alt="sezione ${b.id}" title="clic per ingrandire" ` +
+      `onclick="this.width = this.width === 66 ? 132 : 66; this.height = this.width;">`
+    : '–';
+  const qcBadge = b.qc && b.qc !== 'ok'
+    ? `<span style="font-size:11px;color:var(--muted)">${b.qc}</span>`
+    : (b.metodo === 'maschera' ? '<span style="font-size:11px;color:var(--muted)">maschera</span>' : 'ok');
+  tr.innerHTML =
+    `<td><input type="checkbox" ${b.excluded ? '' : 'checked'} data-id="${b.id}" ` +
+    `title="includi/escludi dalle statistiche" style="width:16px;height:16px;cursor:pointer"></td>` +
+    `<td>${snap}</td><td>${b.id}</td><td class="name">${b.name || '–'}</td><td>${b.gen}</td>` +
+    `<td>${fmt(b.len)}</td><td>${fmt(b.d)}</td><td>${fmt(b.dmin)}</td>` +
+    `<td>${fmt(b.wall)}${b.wok != null ? ' <span style="color:var(--muted);font-size:11px">· ' + Math.round(b.wok) + '%</span>' : ''}</td><td>${fmt(b.wa)}</td><td>${qcBadge}</td>`;
+  tr.style.opacity = b.excluded ? 0.45 : 1;
+  tr.style.cursor = 'pointer';
+  tr.addEventListener('click', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'IMG' || e.target.tagName === 'BUTTON') return;
+    profBranch = b;
+    renderProf();
+    document.getElementById('chart-prof').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  tr.querySelector('input').addEventListener('change', e => {
+    b.excluded = !e.target.checked;
+    tr.style.opacity = b.excluded ? 0.45 : 1;
+    renderDiam(); renderWall(); renderCount(); renderMurray(); renderBA(); updateInclCount();
+  });
+  tb.appendChild(tr);
+});
+updateInclCount();
+document.getElementById('copy-excl').addEventListener('click', () => {
+  const ids = DATA.branches.filter(b => b.excluded).map(b => b.id).join(', ');
+  navigator.clipboard && navigator.clipboard.writeText(ids);
+  document.getElementById('copy-excl').textContent = 'copiato!';
+  setTimeout(() => document.getElementById('copy-excl').textContent = 'copia elenco esclusi', 1500);
+});
+
+function renderAll() { render3d(); renderDiam(); renderWall(); renderCount(); renderProf(); renderMurray(); renderBA(); }
+renderAll();
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    document.getElementById('legend3d').innerHTML = '';
+    GEN_LABELS.forEach((lab, i) => {
+      const s = document.createElement('span');
+      s.innerHTML = `<span class="sw" style="background:${cssVar('--gen-' + i)}"></span>${lab}`;
+      document.getElementById('legend3d').appendChild(s);
+    });
+    renderAll();
+  });
+}
+</script>
+</body>
+</html>
