@@ -47,6 +47,12 @@ CSV_COLUMNS = [
     'n_sezioni_tentate', 'n_sezioni_valide', 'metodo_diametro',
     'qc', 'qc_misura', 'qc_note', 'hu_lume', 'aria_pct', 'd_maschera_mm',
     'floor_calibro_mm',
+    # Step 1 (audit): metriche di maschera sulla sezione perpendicolare.
+    # d_maschera_edt (EDT, ~semiasse minore) resta come 'd_maschera_mm' sopra;
+    # queste sono OMOGENEE col half-max (eq) e la dimensione minima nel piano.
+    'd_maschera_eq_mm', 'd_maschera_min_mm', 'd_maschera_maj_mm',
+    'aspect_mask', 'ct_mask_ratio', 'overshoot_frac',
+    'n_sez_paired_diam', 'n_sez_paired_radial',
     'diametro_raw_nonreportable', 'diametro_min_raw_nonreportable',
     'parete_raw_nonreportable', 'wa_raw_nonreportable',
 ]
@@ -186,6 +192,9 @@ def csv_row(b):
             b.get('qc', ''), b.get('qc_misura', ''), b.get('qc_note', ''),
             b.get('hu_lume'), b.get('aria_pct'), b.get('d_maschera'),
             b.get('floor_mm'),
+            b.get('d_mask_eq'), b.get('d_mask_min'), b.get('d_mask_maj'),
+            b.get('aspect_mask'), b.get('ct_mask_ratio'), b.get('overshoot_frac'),
+            b.get('n_sez_paired_diam'), b.get('n_sez_paired_radial'),
             b.get('d_mean_raw'), b.get('d_min_raw'),
             b.get('wall_raw'), b.get('wa_raw')]
 
