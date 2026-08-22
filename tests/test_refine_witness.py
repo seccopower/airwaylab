@@ -225,8 +225,10 @@ def test_split_reportable_invariant_and_csv_cardinality():
             else:
                 assert clin is None and raw == v
 
-    assert len(CSV_COLUMNS) == 24            # +1: qc_note (audit soft-flag)
-    assert 'qc_note' in CSV_COLUMNS
+    assert len(CSV_COLUMNS) == 28            # +qc_note +4 metriche di maschera
+    for col in ('qc_note', 'd_maschera_eq_mm', 'd_maschera_min_mm',
+                'ct_mask_ratio', 'overshoot_frac'):
+        assert col in CSV_COLUMNS
     dummy = {'id': 'br000', 'name': 'trachea', 'gen': 0, 'length': 100.0}
     assert len(csv_row(dummy)) == len(CSV_COLUMNS)
     # una via centrale esente porta il soft-flag nella riga CSV

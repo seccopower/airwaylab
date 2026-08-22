@@ -8,6 +8,7 @@ import SimpleITK as sitk
 from scipy import ndimage
 import json, csv
 from lumen import analyze_section, pca_tangent, perp_basis
+from section_metrics import mask_section, mask_ray_radii, overshoot_fraction
 
 tree = json.load(open('out/tree.json'))
 ISO = tree['iso']
@@ -39,27 +40,11 @@ def branch_path(b):
 maskf = mask.astype(np.float32)
 
 def cross_section_diam(center, t, r_est_mm):
-    """Area-equivalent lumen diameter (mm) on the plane perpendicular to t."""
-    u, v = perp_basis(t)
-    half = min(20.0, max(6.0, r_est_mm * 3 + 3))   # half-extent in mm
-    step_mm = 0.4
-    n2 = int(half / step_mm)
-    ax = np.arange(-n2, n2 + 1) * (step_mm / ISO)
-    U, V = np.meshgrid(ax, ax)
-    coords = center[None, :] + U.reshape(-1, 1) * u[None, :] + V.reshape(-1, 1) * v[None, :]
-    plane = ndimage.map_coordinates(maskf, coords.T, order=1, mode='constant') > 0.5
-    plane = plane.reshape(U.shape)
-    lab, nlab = ndimage.label(plane)
-    c = lab[n2, n2]
-    if c == 0:
-        # center voxel fell on the wall due to interpolation; take nearest label
-        ys, xs = np.nonzero(lab)
-        if len(ys) == 0:
-            return None
-        k = np.argmin((ys - n2) ** 2 + (xs - n2) ** 2)
-        c = lab[ys[k], xs[k]]
-    area_mm2 = (lab == c).sum() * step_mm ** 2
-    return 2 * np.sqrt(area_mm2 / np.pi)
+    """Area-equivalent lumen diameter (mm) on the plane perpendicular to t —
+    ora delega al modulo puro section_metrics (stessa logica: trilineare, soglia
+    0.5, componente connessa che contiene il centro)."""
+    ms = mask_section(maskf, center, t, ISO, r_est_mm)
+    return ms['d_eq'] if ms else None
 
 for b in tree['branches']:
     path, radii = branch_path(b)
@@ -78,8 +63,10 @@ for b in tree['branches']:
     sample_idx = core_idx_all[::step_pts] or core_idx_all
     MAX_AX_RATIO = 1.45
     accepted, acc_walls, acc_wfrac, acc_overcap, oblique_seen = [], [], [], [], False
+    mask_eqs, mask_mins, overs = [], [], []   # Step 1: audit maschera/half-max
     for i in sample_idx:
-        sec = analyze_section(ct, path[i], pca_tangent(path, i), radii[i], ISO)
+        t = pca_tangent(path, i)
+        sec = analyze_section(ct, path[i], t, radii[i], ISO)
         if sec is None:
             continue
         if sec['quality']['ax_ratio'] > MAX_AX_RATIO:
@@ -90,6 +77,17 @@ for b in tree['branches']:
             acc_walls.append(sec['wall_med'])
             acc_overcap.append(sec['wall_over_cap_frac'])
         acc_wfrac.append(sec['wall_valid_frac'])
+        # --- metriche di MASCHERA sulla STESSA sezione (ricentrata) ---
+        cadj = (path[i] + (sec['shift'][0] / ISO) * sec['u']
+                + (sec['shift'][1] / ISO) * sec['v'])
+        ms = mask_section(maskf, cadj, t, ISO, radii[i])
+        if ms:
+            mask_eqs.append(ms['d_eq'])
+            if ms['d_min'] is not None:
+                mask_mins.append(ms['d_min'])
+            rmax = min(30.0, max(8.0, radii[i] * 3 + 4))
+            mr = mask_ray_radii(maskf, cadj, sec['u'], sec['v'], ISO, rmax)
+            overs.append(overshoot_fraction(sec['inner'], mr))
     b['n_sez_tentate'] = len(sample_idx)
     b['n_sez_valide'] = len(accepted)
     success = len(accepted) / max(1, len(sample_idx))
@@ -125,6 +123,13 @@ for b in tree['branches']:
     b['d_mean'] = round(d_mean, 2)
     b['d_min'] = round(d_min, 2)
     b['wall'] = round(wall, 2) if wall else None
+    # Step 1 (solo audit, gate invariato): calibro AREA-equivalente della
+    # maschera (omogeneo col half-max) + larghezza minima + confronto radiale.
+    b['d_mask_eq'] = round(float(np.median(mask_eqs)), 2) if mask_eqs else None
+    b['d_mask_min'] = round(float(np.median(mask_mins)), 2) if mask_mins else None
+    b['overshoot_frac'] = round(float(np.median(overs)), 3) if overs else None
+    b['ct_mask_ratio'] = (round(d_mean / float(np.median(mask_eqs)), 2)
+                          if mask_eqs and np.median(mask_eqs) > 0 else None)
     # derived indices when wall available
     if wall:
         r_out = d_mean / 2 + wall
