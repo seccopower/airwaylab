@@ -8,7 +8,9 @@ import SimpleITK as sitk
 from scipy import ndimage
 import json, csv
 from lumen import analyze_section, pca_tangent, perp_basis
-from section_metrics import mask_section, mask_ray_radii, radial_delta_stats
+from section_metrics import (MASK_LEVEL, SCHEMA_VERSION, blank_section_record,
+                             branch_mask_summary, mask_ray_radii, mask_section,
+                             radial_delta_stats)
 
 tree = json.load(open('out/tree.json'))
 ISO = tree['iso']
@@ -92,16 +94,25 @@ for b in tree['branches']:
     step_pts = max(1, int(round(1.0 / ISO)))
     sample_idx = core_idx_all[::step_pts] or core_idx_all
     MAX_AX_RATIO = 1.45
+    # ascissa curvilinea VERA (lunghezza cumulativa della polilinea in mm):
+    # fpath e' uniforme nel parametro spline, non nell'arco (rimedio review #4)
+    seg = np.linalg.norm(np.diff(path, axis=0), axis=1) * ISO
+    s_cum = np.concatenate([[0.0], np.cumsum(seg)]) if len(path) > 1 else np.array([0.0])
+    s_tot = float(s_cum[-1])
     accepted, acc_walls, acc_wfrac, acc_overcap, oblique_seen = [], [], [], [], False
     brec = []                 # record di sezione di QUESTO ramo
     for i in sample_idx:
         t = pca_tangent(path, i)
         sec = analyze_section(ct, path[i], t, radii[i], ISO)
-        # --- AUDIT di maschera: calcolato SEMPRE, PRIMA di qualunque filtro QC
-        # (anche sezioni obliqui/senza-lume), con lo status CT associato: lo
-        # Step 3 deve tararsi su un dataset NON censurato. Non tocca d_mean. ---
-        rec = {'branch_id': b['id'], 'aid': b.get('aid'), 'gen': b['gen'],
-               'i': int(i), 's_mm': round(float(i) * ISO, 2)}
+        # --- AUDIT di maschera: SEMPRE, PRIMA di ogni filtro QC; schema FISSO
+        # con chiavi a null anche senza lume CT (dataset non censurato). ---
+        rec = blank_section_record()
+        s_i = float(s_cum[i]) if i < len(s_cum) else 0.0
+        jmargin = max(2.0, float(radii[i]))          # ~1 raggio dalla giunzione
+        rec.update(branch_id=b['id'], aid=b.get('aid'), gen=b['gen'], i=int(i),
+                   s_mm=round(s_i, 2),
+                   near_junction=bool(min(s_i, s_tot - s_i) < jmargin))
+        # centro comune per CT e maschera: il CT-ricentrato cadj (rimedio #1)
         if sec is not None:
             cadj = (path[i] + (sec['shift'][0] / ISO) * sec['u']
                     + (sec['shift'][1] / ISO) * sec['v'])
@@ -109,28 +120,24 @@ for b in tree['branches']:
             rec.update(ct_available=True, ax_ratio=round(float(ax_r), 3),
                        ct_reportable=bool(ax_r <= MAX_AX_RATIO),
                        d_eq_ct=round(float(sec['d_eq']), 2))
-            ms = mask_section(maskf, cadj, t, ISO, radii[i])
-            rec.update(d_mask_eq=_r(ms['d_eq']), d_mask_min=_r(ms['d_min']),
-                       d_mask_maj=_r(ms['d_maj']), aspect=_r(ms['aspect']),
-                       center_in_mask=ms['center_in_mask'],
-                       touches_border=ms['touches_border'],
-                       n_components=ms['n_components'],
-                       valid_mask_section=ms['valid_mask_section'])
-            if ms['valid_mask_section']:
-                rmax = min(30.0, max(8.0, radii[i] * 3 + 4))
-                mr = mask_ray_radii(maskf, ms['center_used'], sec['u'],
-                                    sec['v'], ISO, rmax)
-                rec['radial'] = radial_delta_stats(sec['inner'], mr,
-                                                   spacing_mm=ISO)
         else:
-            ms_only = mask_section(maskf, path[i], t, ISO, radii[i])
-            rec.update(ct_available=False, ct_reportable=False,
-                       d_mask_eq=_r(ms_only['d_eq']), d_mask_min=_r(ms_only['d_min']),
-                       d_mask_maj=_r(ms_only['d_maj']), aspect=_r(ms_only['aspect']),
-                       center_in_mask=ms_only['center_in_mask'],
-                       touches_border=ms_only['touches_border'],
-                       n_components=ms_only['n_components'],
-                       valid_mask_section=ms_only['valid_mask_section'])
+            cadj = path[i]
+            rec.update(ct_available=False, ct_reportable=False)
+        ms = mask_section(maskf, cadj, t, ISO, radii[i])
+        rec.update(d_mask_eq=_r(ms['d_eq']), d_mask_min=_r(ms['d_min']),
+                   d_mask_maj=_r(ms['d_maj']), aspect=_r(ms['aspect']),
+                   solidity=_r(ms.get('solidity'), 3),
+                   centroid_offset_mm=_r(ms.get('centroid_offset_mm')),
+                   center_in_mask=ms['center_in_mask'],
+                   touches_border=ms['touches_border'],
+                   n_components=ms['n_components'],
+                   valid_mask_section=ms['valid_mask_section'])
+        # confronto radiale SOLO se c'e' lume CT e sezione di maschera valida,
+        # con la STESSA origine cadj per entrambi i set di raggi (rimedio #1)
+        if sec is not None and ms['valid_mask_section']:
+            rmax = min(30.0, max(8.0, radii[i] * 3 + 4))
+            mr = mask_ray_radii(maskf, cadj, sec['u'], sec['v'], ISO, rmax)
+            rec['radial'] = radial_delta_stats(sec['inner'], mr, spacing_mm=ISO)
         brec.append(rec)
 
         # --- percorso di MISURA (invariato): accetta solo sezioni non-oblique ---
@@ -179,21 +186,22 @@ for b in tree['branches']:
     b['d_mean'] = round(d_mean, 2)
     b['d_min'] = round(d_min, 2)
     b['wall'] = round(wall, 2) if wall else None
-    # Step 1 (solo audit, gate invariato): mediane di ramo SOLO sulle sezioni
-    # valide (centro in maschera, non troncate, componente unica). Il dataset
-    # completo NON censurato e' in section_mask_metrics.json.
-    valid = [r for r in brec if r.get('valid_mask_section')]
-    veq = [r['d_mask_eq'] for r in valid]
-    b['d_mask_eq'] = _med(veq)
-    b['d_mask_min'] = _med([r['d_mask_min'] for r in valid])
-    b['d_mask_maj'] = _med([r['d_mask_maj'] for r in valid])
-    b['aspect_mask'] = _med([r['aspect'] for r in valid])
-    overs = [r['radial']['frac_over']['0.5'] for r in valid
-             if r.get('radial') and r['radial']['frac_over']['0.5'] is not None]
-    b['overshoot_frac'] = round(float(np.median(overs)), 3) if overs else None
-    b['ct_mask_ratio'] = (round(d_mean / float(np.median(veq)), 2)
-                          if veq and np.median(veq) > 0 else None)
-    b['n_sez_mask_valide'] = len(valid)
+    # Step 1 (solo audit, gate invariato). Flag salto d'area (biforcazione/
+    # transizione) sulle sezioni valide, poi aggregazione con popolazioni
+    # OMOLOGHE (rimedi review #2/#3): la morfometria usa mask_valid (valida, non
+    # giunzionale, senza salto d'area); ct_mask_ratio/overshoot solo su
+    # paired_valid (mask_valid AND CT reportabile), come mediana dei rapporti
+    # per-sezione. Il dataset completo resta nel JSON.
+    v_eq = [r['d_mask_eq'] for r in brec
+            if r.get('valid_mask_section') and not r.get('near_junction')
+            and r.get('d_mask_eq')]
+    med_eq = float(np.median(v_eq)) if v_eq else None
+    for r in brec:
+        r['area_jump'] = bool(
+            med_eq and r.get('d_mask_eq')
+            and (r['d_mask_eq'] > 1.3 * med_eq or r['d_mask_eq'] < 0.77 * med_eq))
+    summ = branch_mask_summary(brec)
+    b.update(summ)
     section_records.extend(brec)
     # derived indices when wall available
     if wall:
@@ -203,10 +211,28 @@ for b in tree['branches']:
     else:
         b['wa_pct'] = None
 json.dump(tree, open('out/tree_measured.json', 'w'))
-# Step 1: artefatto per-sezione NON censurato per la ricalibrazione (Step 3)
-json.dump(section_records, open('out/section_mask_metrics.json', 'w'))
+# Step 1: artefatto per-sezione NON censurato per la ricalibrazione (Step 3),
+# oggetto VERSIONATO con provenienza (schema fisso, ISO, livello maschera, ...)
+_seg_info = json.load(open('out/seg_info.json')) if _os.path.exists('out/seg_info.json') else {}
+section_artifact = {
+    'schema_version': SCHEMA_VERSION,
+    'iso_mm': ISO,
+    'mask_level': MASK_LEVEL,
+    'refined_centerline': _USE_F,
+    'section_step_mm_target': 1.0,
+    'mask_grid_step_mm': 0.4,
+    'ray_step_mm': 0.25,
+    'max_ax_ratio': 1.45,
+    'overshoot_margins_mm': [0.3, 0.5, 1.0],
+    'airwaylab_version': _seg_info.get('airwaylab_version'),
+    'backend': _seg_info.get('backend'),
+    'n_sezioni': len(section_records),
+    'sezioni': section_records,
+}
+json.dump(section_artifact, open('out/section_mask_metrics.json', 'w'))
 print(f"section_mask_metrics: {len(section_records)} sezioni "
-      f"({sum(1 for r in section_records if r.get('valid_mask_section'))} valide)")
+      f"({sum(1 for r in section_records if r.get('valid_mask_section'))} valide, "
+      f"{sum(1 for r in section_records if r.get('ct_reportable'))} ct-reportabili)")
 
 # unified per-branch CSV: SAME schema with and without --mask (witness
 # columns stay empty on built-in runs; witness.py rewrites the file)

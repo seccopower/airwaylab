@@ -77,9 +77,12 @@ def test_connected_component_contains_center():
     m = np.clip(a + b, 0, 1)
     center = np.array([2.0, 30.0 / iso, 22.0 / iso])     # dentro il primo lume
     s = mask_section(m, center, T_Z, iso, r_est_mm=D / 2)
-    assert abs(s['d_eq'] - D) < 1.2                      # un solo lume, non due
-    assert s['n_components'] == 2                        # ma la biforcazione e' segnalata
-    assert s['valid_mask_section'] is False              # e la sezione non e' "pulita"
+    assert abs(s['d_eq'] - D) < 1.2                      # misura SOLO la componente centrale
+    assert s['n_components'] == 2                        # audit: due componenti
+    # una componente estranea DISTANTE non invalida un lume centrale misurabile
+    # (rimedio review #2: n_components non entra in valid_mask_section)
+    assert s['valid_mask_section'] is True
+    assert s['solidity'] > 0.9                           # cerchio: quasi convesso
 
 
 def test_mask_ray_radii_on_circle():
@@ -208,3 +211,86 @@ def test_radial_delta_stats_distinguishes_underfill_from_leak():
     r3 = radial_delta_stats(ct, mk3, spacing_mm=0.7)
     assert abs(r3['no_crossing_frac'] - 8.0 / n) < 1e-9
     assert abs(r3['frac_valid'] - (n - 8) / n) < 1e-9
+
+
+def test_connected_dumbbell_has_low_solidity():
+    """Sezione bilobata CONNESSA (biforcazione a manubrio): n_components==1 ma
+    la solidity e' bassa -> e' il segnale giusto, non n_components (rimedio #2)."""
+    iso = 0.3
+    D = 10.0
+    # due lobi distanti uniti da un collo sottile: manubrio classico (connesso)
+    a = _cylinder((5, 220, 220), iso, 33.0, 24.0, D / 2, D / 2)
+    b = _cylinder((5, 220, 220), iso, 33.0, 42.0, D / 2, D / 2)
+    Ny = Nx = 220
+    yy, xx = np.mgrid[0:Ny, 0:Nx].astype(float)
+    neck = (np.abs((yy - 33.0 / iso) * iso) < 1.0) & \
+           ((xx * iso > 24.0) & (xx * iso < 42.0))
+    m = np.clip(a + b + np.repeat(neck[None], 5, axis=0), 0, 1).astype(np.float32)
+    c = np.array([2.0, 33.0 / iso, 24.0 / iso])
+    s = mask_section(m, c, T_Z, iso, r_est_mm=D / 2, expand=False)
+    assert s['n_components'] == 1                     # connessa dal collo
+    assert s['solidity'] < 0.85                       # ma NON convessa (manubrio)
+    # confronto: un cerchio singolo ha solidity alta
+    m1 = _cylinder((5, 220, 220), iso, 33.0, 33.0, D / 2, D / 2)
+    s1 = mask_section(m1, np.array([2.0, 33.0 / iso, 33.0 / iso]), T_Z, iso, D / 2)
+    assert s1['solidity'] > s['solidity']
+
+
+def test_radii_depend_on_origin():
+    """I raggi dipendono dall'origine: spostando il centro rispetto al lume, i
+    raggi diventano asimmetrici. Motiva l'uso di UNA origine comune (cadj) per
+    CT e maschera nel confronto radiale (rimedio #1)."""
+    iso = 0.3
+    R = 8.0
+    m = _cylinder((5, 200, 200), iso, 30.0, 30.0, R, R)
+    from section_metrics import perp_basis
+    u, v = perp_basis(T_Z)
+    c0 = np.array([2.0, 30.0 / iso, 30.0 / iso])            # centrato
+    c1 = np.array([2.0, 30.0 / iso, (30.0 + 3.0) / iso])    # 3 mm fuori centro
+    rr0 = mask_ray_radii(m, c0, u, v, iso, rmax_mm=18.0)
+    rr1 = mask_ray_radii(m, c1, u, v, iso, rmax_mm=18.0)
+    assert np.nanstd(rr0) < 0.4                             # centrato: quasi costante
+    assert np.nanstd(rr1) > 1.5                             # decentrato: asimmetrico
+
+
+def test_blank_record_schema_is_uniform():
+    """Ogni record ha TUTTE le chiavi (null se assenti): niente chiavi mancanti
+    per le sezioni senza lume CT (rimedio #4)."""
+    from section_metrics import SECTION_KEYS, blank_section_record
+    rec = blank_section_record()
+    assert set(rec) == set(SECTION_KEYS)
+    assert all(rec[k] is None for k in SECTION_KEYS)
+
+
+def test_branch_summary_uses_homologous_populations():
+    """ct_mask_ratio e overshoot solo su paired_valid (mask valida AND CT
+    reportabile); la morfometria su mask_valid; esclude giunzione e salti d'area
+    (rimedio #3)."""
+    from section_metrics import blank_section_record, branch_mask_summary
+
+    def mk(**kw):
+        r = blank_section_record(); r.update(kw); return r
+
+    recs = [
+        # paired valida: CT reportabile + maschera valida
+        mk(valid_mask_section=True, ct_available=True, ct_reportable=True,
+           d_eq_ct=20.0, d_mask_eq=19.0, d_mask_min=13.0, d_mask_maj=25.0,
+           aspect=0.52, radial={'frac_over': {'0.5': 0.4}}),
+        # maschera valida ma CT NON reportabile: entra in morfometria, NON in ratio
+        mk(valid_mask_section=True, ct_available=True, ct_reportable=False,
+           d_eq_ct=99.0, d_mask_eq=18.0, d_mask_min=12.0, d_mask_maj=24.0,
+           aspect=0.5, radial={'frac_over': {'0.5': 0.99}}),
+        # giunzionale: esclusa da tutto
+        mk(valid_mask_section=True, near_junction=True, ct_available=True,
+           ct_reportable=True, d_eq_ct=5.0, d_mask_eq=5.0,
+           radial={'frac_over': {'0.5': 0.9}}),
+        # salto d'area: esclusa
+        mk(valid_mask_section=True, area_jump=True, ct_available=True,
+           ct_reportable=True, d_eq_ct=40.0, d_mask_eq=40.0,
+           radial={'frac_over': {'0.5': 0.9}}),
+    ]
+    s = branch_mask_summary(recs)
+    assert s['n_sez_mask_valide'] == 2          # le due valide non-giunz/non-salto
+    assert s['n_sez_paired_valide'] == 1        # solo quella CT reportabile
+    assert abs(s['ct_mask_ratio'] - 20.0 / 19.0) < 2e-3   # mediana dei rapporti (arrot.)
+    assert s['overshoot_frac'] == 0.4           # solo la paired, non lo 0.99

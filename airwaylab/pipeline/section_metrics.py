@@ -20,6 +20,7 @@ niente nearest-neighbor (aree a scalini, bias d'orientamento).
 """
 import numpy as np
 from scipy import ndimage
+from skimage.morphology import convex_hull_image
 
 from lumen import N_ANGLES, perp_basis
 
@@ -68,22 +69,33 @@ def mask_section(maskf, center, t, iso, r_est_mm, step_mm=0.4,
     fisica (`nearest_tol_mm`, default r_est) e lo dichiara (`center_in_mask=False`).
     Con `expand` la ROI si allarga se la componente tocca il bordo (fino a 40 mm).
 
-    Ritorna sempre un dict con lo status; `valid_mask_section` è True solo se il
-    centro è nella maschera, la componente non tocca il bordo ed è unica."""
+    Ritorna sempre un dict con lo status. `valid_mask_section` = centro nella
+    maschera AND componente non troncata (NON usa n_components: una componente
+    estranea distante non deve invalidare un lume centrale misurabile). Il
+    numero di componenti resta come audit; la biforcazione va rilevata con
+    distanza dalla giunzione e/o `solidity` (bassa su una sezione bilobata
+    connessa), non con n_components==1."""
     u, v = perp_basis(t)
     if nearest_tol_mm is None:
         nearest_tol_mm = max(2.0, r_est_mm)
     half = min(20.0, max(6.0, r_est_mm * 3 + 3))
-    occ = lab = None
+
+    def _invalid(nlab, cim):
+        return {'valid_mask_section': False, 'center_in_mask': cim,
+                'n_components': int(nlab), 'touches_border': False,
+                'solidity': None, 'centroid_offset_mm': None,
+                'area_mm2': 0.0, 'd_eq': None, 'd_min': None, 'd_maj': None,
+                'aspect': None, 'u': u, 'v': v, 'center_used': center}
+
+    comp = None
     n2 = 0
+    center_in_mask = False
+    nlab = 0
     for _ in range(4):
         occ, n2 = _plane_sample(maskf, center, u, v, iso, half, step_mm)
         lab, nlab = ndimage.label(occ)
         if nlab == 0:
-            return {'valid_mask_section': False, 'center_in_mask': False,
-                    'n_components': 0, 'touches_border': False,
-                    'area_mm2': 0.0, 'd_eq': None, 'd_min': None, 'd_maj': None,
-                    'aspect': None, 'u': u, 'v': v, 'center_used': center}
+            return _invalid(0, False)
         cc = lab[n2, n2]
         center_in_mask = cc > 0
         if not center_in_mask:
@@ -91,11 +103,7 @@ def mask_section(maskf, center, t, iso, r_est_mm, step_mm=0.4,
             k = int(np.argmin((ys - n2) ** 2 + (xs - n2) ** 2))
             dist_mm = np.hypot(ys[k] - n2, xs[k] - n2) * step_mm
             if dist_mm > nearest_tol_mm:
-                return {'valid_mask_section': False, 'center_in_mask': False,
-                        'n_components': int(nlab), 'touches_border': False,
-                        'area_mm2': 0.0, 'd_eq': None, 'd_min': None,
-                        'd_maj': None, 'aspect': None, 'u': u, 'v': v,
-                        'center_used': center}
+                return _invalid(nlab, False)
             cc = lab[ys[k], xs[k]]
         comp = (lab == cc)
         touches = _touches_border(comp)
@@ -107,16 +115,23 @@ def mask_section(maskf, center, t, iso, r_est_mm, step_mm=0.4,
     area = float(comp.sum()) * step_mm ** 2
     d_min, d_maj = _feret(comp, step_mm)
     aspect = (d_min / d_maj) if (d_min and d_maj) else None
-    # centro effettivo usato per i raggi: baricentro della componente scelta
+    try:
+        hull = convex_hull_image(comp)
+        solidity = float(comp.sum()) / float(max(1, hull.sum()))
+    except Exception:
+        solidity = None
     cy, cx = ndimage.center_of_mass(comp)
+    centroid_offset_mm = float(np.hypot(cy - n2, cx - n2) * step_mm)
     center_used = (center + (cx - n2) * (step_mm / iso) * u
                    + (cy - n2) * (step_mm / iso) * v)
     return {
         'area_mm2': area, 'd_eq': 2.0 * np.sqrt(area / np.pi),
         'd_min': d_min, 'd_maj': d_maj, 'aspect': aspect,
+        'solidity': solidity, 'centroid_offset_mm': centroid_offset_mm,
         'center_in_mask': bool(center_in_mask), 'n_components': int(nlab),
         'touches_border': bool(touches),
-        'valid_mask_section': bool(center_in_mask and not touches and nlab == 1),
+        # NB: n_components NON entra qui (audit-only)
+        'valid_mask_section': bool(center_in_mask and not touches),
         'u': u, 'v': v, 'center_used': center_used,
     }
 
@@ -207,3 +222,53 @@ def overshoot_fraction(ct_inner_mm, mask_radii_mm, margin_mm=0.3):
     if not ok.any():
         return 0.0
     return float((ct[ok] > mk[ok] + margin_mm).mean())
+
+
+# --- schema fisso del record di sezione (JSON versionato, valori null) --------
+SCHEMA_VERSION = 1
+SECTION_KEYS = (
+    'branch_id', 'aid', 'gen', 'i', 's_mm',
+    'ct_available', 'ax_ratio', 'ct_reportable', 'd_eq_ct',
+    'd_mask_eq', 'd_mask_min', 'd_mask_maj', 'aspect', 'solidity',
+    'center_in_mask', 'centroid_offset_mm', 'touches_border', 'n_components',
+    'near_junction', 'area_jump', 'valid_mask_section', 'radial',
+)
+
+
+def blank_section_record():
+    """Record di sezione con TUTTE le chiavi presenti a null: lo schema resta
+    uniforme anche per le sezioni senza lume CT (niente chiavi mancanti)."""
+    return {k: None for k in SECTION_KEYS}
+
+
+def _med(vals):
+    vals = [v for v in vals if v is not None]
+    return round(float(np.median(vals)), 3) if vals else None
+
+
+def branch_mask_summary(records):
+    """Aggrega le metriche di ramo da record di sezione, separando popolazioni
+    OMOLOGHE (rimedio review): la morfometria di maschera usa le sezioni
+    `mask_valid` (valide, non giunzionali, senza salto d'area); il confronto
+    CT/maschera (ct_mask_ratio, overshoot) usa SOLO le `paired_valid`
+    (mask_valid AND CT disponibile e reportabile). ct_mask_ratio e' la mediana
+    dei RAPPORTI per-sezione, non un rapporto di mediane su insiemi diversi."""
+    mask_valid = [r for r in records if r.get('valid_mask_section')
+                  and not r.get('near_junction') and not r.get('area_jump')]
+    paired = [r for r in mask_valid
+              if r.get('ct_available') and r.get('ct_reportable')
+              and r.get('d_eq_ct') and r.get('d_mask_eq')
+              and r.get('radial') is not None]
+    ratios = [r['d_eq_ct'] / r['d_mask_eq'] for r in paired]
+    overs = [r['radial']['frac_over']['0.5'] for r in paired
+             if r['radial'].get('frac_over', {}).get('0.5') is not None]
+    return {
+        'd_mask_eq': _med([r['d_mask_eq'] for r in mask_valid]),
+        'd_mask_min': _med([r['d_mask_min'] for r in mask_valid]),
+        'd_mask_maj': _med([r['d_mask_maj'] for r in mask_valid]),
+        'aspect_mask': _med([r['aspect'] for r in mask_valid]),
+        'ct_mask_ratio': round(float(np.median(ratios)), 3) if ratios else None,
+        'overshoot_frac': round(float(np.median(overs)), 3) if overs else None,
+        'n_sez_mask_valide': len(mask_valid),
+        'n_sez_paired_valide': len(paired),
+    }
