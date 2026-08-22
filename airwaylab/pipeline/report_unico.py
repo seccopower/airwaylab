@@ -23,6 +23,7 @@ TABS = [
     ('Mappa quantitativa', 'out/report_main.html'),
     ('Discordanza aereo-vascolare', 'out/dual_viz.html'),
     ('Mappa strutturale multi-asse', 'out/morphomap.html'),
+    ('Incertezza (ensemble)', 'out/uncertainty.html'),
     ('Arterie / vene', 'out/av_viz.html'),
     ('Flusso simulato', 'out/flow_viz.html'),
 ]

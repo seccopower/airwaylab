@@ -29,164 +29,28 @@ import os
 
 import numpy as np
 
-from flow_core import mass_error, poiseuille_R, r_completion, solve_tree
+import sys
 
-# --- parametri fisici (congelabili; oggetto della sensibilita') --------------
-MU = 1.81e-5          # Pa*s
-RHO = 1.20            # kg/m^3
-PA_PER_CMH2O = 98.0665
-PARAMS = dict(
-    Q_snapshot_Lps=0.5,     # snapshot quasi-stazionario (NON flusso medio)
-    murray_exp=3.0,         # d ∝ territorio^(1/murray_exp) per l'imputazione
-    completion_Ld=3.0,      # L/d nel completamento morfometrico
-    completion_dstop_mm=0.5,  # diametro acinare di arresto del completamento
-    pedley=True,            # correzione di Pedley (altrimenti solo Poiseuille)
-    d_num_floor_mm=0.3,     # pavimento numerico (evita d->0), NON fisiologico
-)
+from flow_model import (MU, PA_PER_CMH2O, PARAMS, RHO,  # noqa: F401
+                        build_topology, run_model)
+
+sys.setrecursionlimit(20000)
 
 tree = json.load(open('out/tree_measured.json'))
 terr = json.load(open('out/territories.json')) if os.path.exists('out/territories.json') else {}
 plugs = json.load(open('out/plugs.json')) if os.path.exists('out/plugs.json') else []
 
-branches = tree['branches']
-by_id = {b['id']: b for b in branches}
-children = {}
-for b in branches:
-    children.setdefault(b['u'], []).append(b)
-kids = lambda b: children.get(b['v'], [])
-root = next((b for b in branches if b.get('aid') == 'TRACHEA'), None) or branches[0]
-parent = {}
-for p in branches:
-    for c in kids(p):
-        parent[c['id']] = p
-
-LOBE_AID = {'RUL', 'RML', 'RLL', 'LUL', 'LING', 'LLL'}
-
-
-def lobe_of(b):
-    cur = b
-    for _ in range(40):
-        if cur.get('aid') in LOBE_AID:
-            return cur['aid']
-        cur = parent.get(cur['id'])
-        if cur is None:
-            return 'CENTRAL'
-    return 'CENTRAL'
-
-
-import sys
-sys.setrecursionlimit(20000)
-
-# --- territorio di sottoalbero (per l'imputazione asimmetrica dei diametri) ---
-leaves = [b for b in branches if not kids(b)]
-terr_ml = {b['id']: max(0.05, float(terr.get(b['id'], 0.05))) for b in leaves}
-Sub = {}
-
-
-def subtree_terr(b):
-    if b['id'] in Sub:
-        return Sub[b['id']]
-    ks = kids(b)
-    s = terr_ml.get(b['id'], 0.0) if not ks else sum(subtree_terr(c) for c in ks)
-    Sub[b['id']] = s
-    return s
-
-
-subtree_terr(root)
-tot_ml = Sub[root['id']]
-
-
-def run_model(P, blocked=frozenset()):
-    """Risolve il modello per un dizionario di parametri P. Ritorna un dict.
-
-    blocked: id di rami occlusi (esperimento plug). La rete viene risolta
-    sulla topologia POTATA con lo STESSO punto fisso non lineare del baseline
-    (review r3, major #7): le R di Pedley vengono ricalcolate sui flussi
-    ridistribuiti, e le foglie della rete potata ricevono il loro
-    completamento periferico (nessun KeyError su nuove foglie)."""
-    dstop = P['completion_dstop_mm']
-    Ld = P['completion_Ld']
-    nexp = P['murray_exp']
-    dfloor = P['d_num_floor_mm']
-    Q_tot = P['Q_snapshot_Lps'] * 1e-3   # m^3/s
-
-    # --- diametri: misurato dove c'e', altrove asimmetrico per territorio -----
-    diam = {}
-
-    def assign_d(b, d_par):
-        if b.get('d_mean'):
-            d = float(b['d_mean'])
-        else:
-            frac = Sub[b['id']] / max(1e-9, Sub[parent[b['id']]['id']]) if b['id'] in parent else 1.0
-            d = min(d_par, max(dfloor, d_par * frac ** (1.0 / nexp)))
-        diam[b['id']] = d
-        for c in kids(b):
-            assign_d(c, d)
-
-    assign_d(root, float(root.get('d_mean') or 18.0))
-
-    # --- completamento periferico: prosegue oltre la foglia SENZA plateau -----
-    #   semantica: dstop = diametro acinare di arresto (bronchiolo terminale).
-    #   Finche' il ramo genitore e' piu' largo di dstop c'e' ancora albero di
-    #   conduzione da modellare: si aggiunge una generazione di figli
-    #   (d = h*d_genitore, L=Ld*d, 2 condotti in parallelo). Cosi' una foglia
-    #   con d_leaf > dstop riceve SEMPRE completamento positivo (fix blocker:
-    #   R_completion(0.6) > 0 con dstop=0.5).
-    def R_completion(d_leaf):
-        return r_completion(d_leaf, dstop, Ld, nexp, MU)   # nucleo testato
-
-    # topologia (eventualmente potata): foglie e completamento periferico
-    keep = [b for b in branches if b['id'] not in blocked]
-    ch = lambda bid: [c['id'] for c in kids(by_id[bid]) if c['id'] not in blocked]
-    lv = [b for b in keep if not ch(b['id'])]
-    R_ext = {b['id']: R_completion(diam[b['id']]) for b in lv}
-
-    # --- resistenza di ramo (Poiseuille, opz. Pedley in funzione del flusso) --
-    diag = {}
-
-    def branch_R(b, q):
-        d_m = diam[b['id']] * 1e-3
-        L_m = max(1e-3, float(b['length']) * 1e-3)
-        R0 = poiseuille_R(L_m, d_m, MU)
-        Re = Z = 0.0
-        if P['pedley'] and q > 0:
-            v = q / (np.pi * (d_m / 2) ** 2)
-            Re = RHO * v * d_m / MU
-            Z = 0.327 * np.sqrt(max(1e-9, Re * d_m / L_m))
-            R = R0 * max(1.0, Z)
-        else:
-            R = R0
-        diag[b['id']] = {'Re': Re, 'ReD_L': Re * d_m / L_m if Re else 0.0,
-                         'Z': Z, 'pedley_attivo': bool(Z > 1.0)}
-        return R
-
-    # --- iterazione: R dipende dal flusso (Pedley) -> punto fisso -------------
-    # il solutore serie/parallelo e' flow_core.solve_tree (nucleo testato)
-    Q = {b['id']: Q_tot * Sub[b['id']] / tot_ml for b in keep}
-    Req, converged, iters, resid = {}, False, 0, float('inf')
-    for it in range(1, 61):
-        R = {b['id']: branch_R(b, Q[b['id']]) for b in keep}
-        Req, newQ = solve_tree(root['id'], ch, R, R_ext, Q_tot)
-        resid = max(abs(newQ[b['id']] - Q[b['id']]) for b in keep) / Q_tot
-        Q, iters = newQ, it
-        if resid < 1e-9:
-            converged = True
-            break
-
-    # rete FINALE coerente: R e Req ricalcolati sullo stesso Q finale (fix #3)
-    R = {b['id']: branch_R(b, Q[b['id']]) for b in keep}
-    Req, _ = solve_tree(root['id'], ch, R, R_ext, Q_tot)
-    Raw = Req[root['id']] * 1e-3 / PA_PER_CMH2O                 # cmH2O*s/L
-    mass_err = mass_error(root['id'], ch, Q, Q_tot)
-
-    return dict(diam=diam, R=R, R_ext=R_ext, Req=Req, Q=Q, diag=diag,
-                Raw=Raw, Q_tot=Q_tot, converged=converged, iters=iters,
-                resid=resid, mass_err=mass_err, R_completion=R_completion)
+# assemblaggio e soluzione vivono in flow_model (condivisi con uncertainty.py)
+topo = build_topology(tree, terr)
+branches = topo['branches']; by_id = topo['by_id']; kids = topo['kids']
+root = topo['root']; parent = topo['parent']; leaves = topo['leaves']
+terr_ml = topo['terr_ml']; Sub = topo['Sub']; tot_ml = topo['tot_ml']
+lobe_of = topo['lobe_of']
 
 
 # ---------- soluzione principale ---------------------------------------------
 base = PARAMS.copy()
-sol = run_model(base)
+sol = run_model(topo, base)
 Raw = sol['Raw']
 Q, R, Req, diam = sol['Q'], sol['R'], sol['Req'], sol['diam']
 n_meas = sum(1 for b in branches if b.get('d_mean'))
@@ -258,7 +122,7 @@ for p in plugs:
     if root['id'] in blocked:
         continue
     lost_ml = sum(terr_ml.get(i, 0.0) for i in blocked if i in terr_ml)
-    s2 = run_model(base, blocked=frozenset(blocked))
+    s2 = run_model(topo, base, blocked=frozenset(blocked))
     Raw2 = s2['Raw']
     plug_out.append({
         'status': 'exploratory_simulation', 'plug': p.get('pid'),
@@ -287,7 +151,7 @@ for key, values in (('completion_Ld', [2.0, 3.0, 4.0]),
     for v in values:
         pp = base.copy()
         pp[key] = v
-        s = run_model(pp)
+        s = run_model(topo, pp)
         sens.append({'parametro': key, 'valore': v,
                      'model_raw': round(s['Raw'], 3), 'model_cv_svent': cv_of(s),
                      'converged': s['converged']})
