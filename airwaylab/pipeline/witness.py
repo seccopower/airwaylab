@@ -84,7 +84,7 @@ for b in tree['branches']:
     elif d_mask < D_MIN:
         b['qc'] = 'sotto-risoluzione'
         tier = 1
-    elif contour_escaped(b.get('d_mean'), d_mask):
+    elif contour_escaped(b.get('d_mean'), d_mask, b.get('aid')):
         b['qc'] = 'fuga-contorno'
         tier = 3
     else:

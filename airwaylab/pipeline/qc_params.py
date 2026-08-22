@@ -20,6 +20,13 @@ AIR_FRAC = 0.60
 ESCAPE_K = 1.5     # half-max escaped if d_mean > K * d_mask + C
 ESCAPE_C = 0.5
 VOXELS_FLOOR = 3.0
+# central large airways (trachea, main bronchi, intermediate): the contour-
+# escape gate is NOT applied here. External DL masks are known to UNDER-render
+# these big airways, so a correct half-max lumen (~18 mm on the trachea)
+# overshoots K*d_mask+C and would be wrongly demoted; on the central airways the
+# half-max lumen is the trusted measurement, and a peripheral-style contour leak
+# is not a plausible failure mode. Aid-based (never display strings).
+CENTRAL_AIDS = frozenset({'TRACHEA', 'RMB', 'LMB', 'BI'})
 
 INVALID_QC = ('no-lume', 'sotto-risoluzione', 'fuga-contorno')
 
@@ -136,8 +143,15 @@ PROVENANCE_KEYS = ('backend', 'refined_centerline', 'tight_small_window',
                    'airwaylab_version')
 
 
-def contour_escaped(d_mean, d_mask):
-    """True if the half-max diameter overshoots the mask diameter."""
+def contour_escaped(d_mean, d_mask, aid=None):
+    """True if the half-max diameter overshoots the mask diameter.
+
+    Central large airways (aid in CENTRAL_AIDS) are exempt: the DL mask
+    under-renders them, so a large half-max there is the trusted lumen, not a
+    peripheral contour leak — demoting the trachea/main bronchi for 'escape'
+    is a false positive."""
+    if aid in CENTRAL_AIDS:
+        return False
     return bool(d_mean is not None and d_mask is not None
                 and d_mean > ESCAPE_K * d_mask + ESCAPE_C)
 

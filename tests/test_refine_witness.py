@@ -110,6 +110,28 @@ def test_air_witness_production_gate_and_borderlines():
     assert air_witness(np.array([])) is False
 
 
+def test_contour_escape_exempts_central_airways():
+    """Il gate fuga-contorno usa la STESSA funzione della pipeline. Quando la
+    maschera DL sotto-stima le grandi vie centrali (trachea/bronchi principali),
+    la half-max corretta 'sfugge' oltre il diametro di maschera: NON deve essere
+    demolita sulle vie centrali, ma deve restare demolita in periferia."""
+    from qc_params import CENTRAL_AIDS, ESCAPE_C, ESCAPE_K, contour_escaped
+
+    # maschera che sotto-stima la trachea: d_mask 11 mm, half-max vera ~18 mm
+    d_mask, d_true = 11.0, 18.0
+    assert d_true > ESCAPE_K * d_mask + ESCAPE_C            # tripperebbe il gate
+    # ...ma le vie centrali sono esenti -> restano misurabili
+    for aid in CENTRAL_AIDS:                                 # TRACHEA, RMB, LMB, BI
+        assert contour_escaped(d_true, d_mask, aid) is False
+    # un ramo periferico con lo stesso overshoot resta demolito
+    assert contour_escaped(d_true, d_mask, 'RB10') is True
+    assert contour_escaped(d_true, d_mask, None) is True
+    # una via centrale con misura plausibile non e' comunque toccata
+    assert contour_escaped(12.0, 12.5, 'TRACHEA') is False
+    # in periferia una misura coerente con la maschera non trippa il gate
+    assert contour_escaped(3.0, 2.6, 'RB10') is False
+
+
 def test_resolution_floor_conservative_and_orientation_dependent():
     """The conservative floor uses the WORST native axis (slice thickness
     included); the per-branch floor projects the native spacings into the
