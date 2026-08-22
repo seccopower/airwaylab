@@ -18,7 +18,7 @@ come pulito quando non lo è:
 
 Le biforcazioni NON si censurano con soglie morfologiche non validate: si
 esportano gli ingredienti grezzi (solidity, distance_to_junction_mm,
-local_area_ratio) e si escludono dalle SINTESI solo le sezioni topologicamente
+local_diameter_ratio) e si escludono dalle SINTESI solo le sezioni topologicamente
 prossime alla giunzione. Un futuro `suspected_bifurcation` combinera' bassa
 solidity e aumento locale d'area DOPO calibrazione annotata.
 

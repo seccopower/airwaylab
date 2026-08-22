@@ -192,7 +192,7 @@ for b in tree['branches']:
     b['d_min'] = round(d_min, 2)
     b['wall'] = round(wall, 2) if wall else None
     # Step 1 (solo audit, gate invariato). NESSUNA censura morfologica con
-    # soglie non validate: si esporta solo un rapporto d'area LOCALE (vs le
+    # soglie non validate: si esporta solo un rapporto di DIAMETRO locale (vs le
     # sezioni adiacenti dello stesso ramo) come ingrediente grezzo; l'esclusione
     # dalle sintesi e' esclusivamente topologica (near_junction). L'aggregazione
     # separa le popolazioni omologhe (rimedio review #3).
