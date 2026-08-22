@@ -190,6 +190,103 @@ def cmd_run(args):
     )
 
 
+EXPLORATORY_STEPS = [
+    ("flow.py", "1D airflow model (exploratory)"),
+    ("morphomap.py", "multi-axis structural map (exploratory)"),
+    ("uncertainty.py", "robustness ensemble (exploratory)"),
+    ("dual_viz.py", "airway-vascular discordance page"),
+    ("av_viz.py", "artery/vein page"),
+    ("flow_viz.py", "flow model page"),
+]
+
+
+def _exploratory_and_report(prefix, name, run_env):
+    """Nel work dir (cwd): esegue gli step esplorativi standalone e assembla il
+    report unico a schede. Riusa gli output della pipeline gia' presenti in out/.
+    Ritorna il percorso del report unico o None se non prodotto."""
+    env = dict(run_env)
+    env["AIRWAYLAB_CASE"] = name
+    for script, desc in EXPLORATORY_STEPS:
+        print(f"\n=== {script} — {desc} ===")
+        _step(script, [], env=env)
+    # il report principale (out/report_main.html) e' l'input della prima scheda
+    main_report = prefix + "_report.html"
+    if os.path.exists(main_report):
+        shutil.copy(main_report, os.path.join("out", "report_main.html"))
+    print("\n=== report_unico.py — unified tabbed report ===")
+    _step("report_unico.py", [], env=env)
+    src = os.path.join("out", "report_unico.html")
+    if os.path.exists(src):
+        dst = prefix + "_report_unico.html"
+        shutil.copy(src, dst)
+        return dst
+    return None
+
+
+def _run_totalsegmentator(ct, segdir):
+    """Lancia TotalSegmentator (task lung_vessels) se le maschere non esistono.
+    Ritorna il percorso della maschera vie aeree."""
+    airways = os.path.join(segdir, "lung_airways.nii.gz")
+    if os.path.exists(airways):
+        print(f"maschere gia' presenti in {segdir} — salto TotalSegmentator")
+        return airways
+    exe = shutil.which("TotalSegmentator") or shutil.which("totalsegmentator")
+    if not exe:
+        sys.exit("TotalSegmentator non trovato nel PATH. Installalo, oppure fornisci "
+                 "gia' le maschere in " + segdir + " (lung_airways/arteries/veins).")
+    print(f"\n=== TotalSegmentator (task lung_vessels) -> {segdir} ===")
+    r = subprocess.run([exe, "-i", ct, "-o", segdir, "--task", "lung_vessels"])
+    if r.returncode != 0:
+        sys.exit(f"ERROR in TotalSegmentator (exit {r.returncode})")
+    if not os.path.exists(airways):
+        sys.exit("TotalSegmentator non ha prodotto lung_airways.nii.gz in " + segdir)
+    return airways
+
+
+def cmd_report(args):
+    """DICOM -> report unico, in un solo comando. Idempotente: salta gli step
+    i cui output esistono gia'. Anonimizza (scelta serie automatica), segmenta,
+    esegue pipeline + analisi esplorative, assembla il report a schede."""
+    outroot = os.path.abspath(args.outdir or os.getcwd())
+    name = args.name
+    os.makedirs(outroot, exist_ok=True)
+    ct = os.path.join(outroot, name + ".nii.gz")
+    segdir = os.path.join(outroot, name + "_seg")
+
+    # 1) anonimizzazione con scelta serie automatica (o --series per forzare)
+    if os.path.exists(ct):
+        print(f"CT anonimizzata gia' presente: {ct} — salto anonimizzazione")
+    else:
+        extra = [str(args.series)] if args.series is not None else []
+        _step("anonymize.py", [args.dicom_dir, ct, *extra])
+
+    # 2) segmentazione DL (vie aeree + arterie/vene)
+    mask = _run_totalsegmentator(ct, segdir)
+
+    # 3) pipeline completa (riusa cmd_run): backend DL, arterie/vene auto accanto al mask
+    run_args = argparse.Namespace(
+        ct=ct, mask=mask, name=name, outdir=outroot, spacing=args.spacing,
+        biopsies=None, refine=False, arteries=None, veins=None)
+    cmd_run(run_args)   # lascia cwd nel work dir e ricostruisce run_env internamente
+
+    # 4) coda esplorativa + report unico (nel work dir dove cmd_run ci ha lasciati)
+    work = os.path.join(outroot, name + "_work")
+    os.chdir(work)
+    prefix = os.path.join(outroot, name)
+    # ricostruisci l'env come in cmd_run (arterie/vene per le pagine)
+    run_env = {k: v for k, v in os.environ.items()
+               if k not in ("AIRWAYLAB_ARTERIES", "AIRWAYLAB_VEINS")}
+    _art = os.path.join(segdir, "lung_arteries.nii.gz")
+    _vein = os.path.join(segdir, "lung_veins.nii.gz")
+    if os.path.exists(_art):
+        run_env["AIRWAYLAB_ARTERIES"] = _art
+    if os.path.exists(_vein):
+        run_env["AIRWAYLAB_VEINS"] = _vein
+    report = _exploratory_and_report(prefix, name, run_env)
+    print("\n=== REPORT PRONTO ===")
+    print(f"  {report or '(report unico non prodotto)'}")
+
+
 def cmd_anonymize(args):
     extra = [args.series] if args.series is not None else []
     _step("anonymize.py", [args.dicom_dir, args.output, *extra])
@@ -235,6 +332,23 @@ def main():
     pr.add_argument("--veins", default=None, metavar="VEIN_MASK",
                     help="pulmonary vein mask (lung_veins.nii.gz); default next to --mask")
     pr.set_defaults(func=cmd_run)
+
+    prep = sub.add_parser(
+        "report",
+        help="un solo comando: cartella DICOM -> report unico (anonimizza con "
+        "scelta serie automatica, segmenta con TotalSegmentator, esegue pipeline "
+        "e analisi esplorative, assembla il report a schede). Idempotente.")
+    prep.add_argument("dicom_dir", help="cartella DICOM del paziente (anche CD/PACS)")
+    prep.add_argument("--name", required=True, help="ID neutro del caso (es. caso06)")
+    prep.add_argument("--outdir", default=None,
+                      help="cartella di lavoro/output (default: cwd). CT anonimizzata, "
+                      "maschere e report finiscono qui.")
+    prep.add_argument("--series", type=int, default=None,
+                      help="forza l'indice di serie (default: scelta automatica della "
+                      "ricostruzione sottile piu' adatta)")
+    prep.add_argument("--spacing", type=float, default=None,
+                      help="spacing isotropico di ricampionamento in mm")
+    prep.set_defaults(func=cmd_report)
 
     pv = sub.add_parser("version", help="print version")
     pv.set_defaults(func=lambda a: print(f"AirwayLab v{__version__}"))
