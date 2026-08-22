@@ -20,13 +20,19 @@ AIR_FRAC = 0.60
 ESCAPE_K = 1.5     # half-max escaped if d_mean > K * d_mask + C
 ESCAPE_C = 0.5
 VOXELS_FLOOR = 3.0
-# central large airways (trachea, main bronchi, intermediate): the contour-
-# escape gate is NOT applied here. External DL masks are known to UNDER-render
-# these big airways, so a correct half-max lumen (~18 mm on the trachea)
-# overshoots K*d_mask+C and would be wrongly demoted; on the central airways the
-# half-max lumen is the trusted measurement, and a peripheral-style contour leak
-# is not a plausible failure mode. Aid-based (never display strings).
-CENTRAL_AIDS = frozenset({'TRACHEA', 'RMB', 'LMB', 'BI'})
+# central large airways exempt from HARD contour-escape demotion. Single source
+# of truth: the normative central set already defined in anatomy.py (the ALR4
+# airways). Deriving it here — instead of a second literal list — keeps the two
+# from diverging. External DL masks tend to UNDER-render these big airways, so a
+# large half-max there is usually the mask under-filling, not a contour leak;
+# but a real escape (patologia grave, contatto con esofago/vasi/mediastino,
+# sezione obliqua, centerline decentrata, stenosi) is NOT impossible centrally.
+# Policy: on these AIDs the endpoint is preserved but the discordance is recorded
+# as an audit soft-flag (escape_gate_exempt / qc_note), so a central overshoot is
+# never indistinguishable from a mask-concordant measurement — it stays flagged
+# for visual verification. Decided in witness.py, not silently inside the gate.
+from anatomy import ALR4_AIDS as CENTRAL_AIDS   # noqa: E402
+ESCAPE_EXEMPT_NOTE = 'central-mask-underfill'
 
 INVALID_QC = ('no-lume', 'sotto-risoluzione', 'fuga-contorno')
 
@@ -39,7 +45,7 @@ CSV_COLUMNS = [
     'diametro_medio_mm', 'diametro_min_mm', 'spessore_parete_mm',
     'parete_settori_validi_pct', 'parete_oltre_cap_pct', 'wall_area_pct',
     'n_sezioni_tentate', 'n_sezioni_valide', 'metodo_diametro',
-    'qc', 'qc_misura', 'hu_lume', 'aria_pct', 'd_maschera_mm',
+    'qc', 'qc_misura', 'qc_note', 'hu_lume', 'aria_pct', 'd_maschera_mm',
     'floor_calibro_mm',
     'diametro_raw_nonreportable', 'diametro_min_raw_nonreportable',
     'parete_raw_nonreportable', 'wa_raw_nonreportable',
@@ -143,17 +149,32 @@ PROVENANCE_KEYS = ('backend', 'refined_centerline', 'tight_small_window',
                    'airwaylab_version')
 
 
-def contour_escaped(d_mean, d_mask, aid=None):
-    """True if the half-max diameter overshoots the mask diameter.
-
-    Central large airways (aid in CENTRAL_AIDS) are exempt: the DL mask
-    under-renders them, so a large half-max there is the trusted lumen, not a
-    peripheral contour leak — demoting the trachea/main bronchi for 'escape'
-    is a false positive."""
-    if aid in CENTRAL_AIDS:
-        return False
+def contour_escaped(d_mean, d_mask):
+    """True if the half-max diameter overshoots the mask diameter (pure
+    geometric test). The central-airway EXEMPTION is applied by the caller
+    (witness.py), which preserves the endpoint but records an audit flag — the
+    gate itself stays a single, aid-agnostic geometric criterion."""
     return bool(d_mean is not None and d_mask is not None
                 and d_mean > ESCAPE_K * d_mask + ESCAPE_C)
+
+
+def escape_decision(d_mean, d_mask, aid):
+    """Policy applied by witness.py when the (pure) contour-escape gate fires.
+
+    Returns (demote, note):
+      - gate NOT fired            -> (False, '')      endpoint kept, no note
+      - fired, peripheral branch  -> (True,  '')      HARD demotion 'fuga-contorno'
+      - fired, central airway     -> (False, NOTE)    endpoint KEPT but flagged
+                                                      (central-mask-underfill),
+                                                      for visual verification
+
+    So a central overshoot is preserved yet remains an explicit audit event —
+    never indistinguishable from a measurement concordant with the mask."""
+    if not contour_escaped(d_mean, d_mask):
+        return (False, '')
+    if aid in CENTRAL_AIDS:
+        return (False, ESCAPE_EXEMPT_NOTE)
+    return (True, '')
 
 
 def csv_row(b):
@@ -162,7 +183,7 @@ def csv_row(b):
             b.get('d_mean'), b.get('d_min'), b.get('wall'),
             b.get('wall_ok_pct'), b.get('wall_over_cap_pct'), b.get('wa_pct'),
             b.get('n_sez_tentate'), b.get('n_sez_valide'), b.get('metodo', ''),
-            b.get('qc', ''), b.get('qc_misura', ''),
+            b.get('qc', ''), b.get('qc_misura', ''), b.get('qc_note', ''),
             b.get('hu_lume'), b.get('aria_pct'), b.get('d_maschera'),
             b.get('floor_mm'),
             b.get('d_mean_raw'), b.get('d_min_raw'),

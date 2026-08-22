@@ -34,7 +34,7 @@ import numpy as np
 import SimpleITK as sitk
 from scipy import ndimage
 
-from qc_params import (air_witness, branch_floor_mm, contour_escaped,
+from qc_params import (air_witness, branch_floor_mm, escape_decision,
                        resolution_floor_mm, write_branches_csv)
 
 tree = json.load(open('out/tree_measured.json'))
@@ -84,11 +84,19 @@ for b in tree['branches']:
     elif d_mask < D_MIN:
         b['qc'] = 'sotto-risoluzione'
         tier = 1
-    elif contour_escaped(b.get('d_mean'), d_mask, b.get('aid')):
-        b['qc'] = 'fuga-contorno'
-        tier = 3
     else:
-        tier = 0                              # keep original measurement qc
+        # gate di fuga-contorno (puro geometrico) + policy centrale, in una
+        # funzione pura testabile: le vie centrali esenti mantengono l'endpoint
+        # ma vengono flaggate per audit; la periferia resta hard-demotion.
+        demote, note = escape_decision(b.get('d_mean'), d_mask, b.get('aid'))
+        if demote:
+            b['qc'] = 'fuga-contorno'
+            tier = 3
+        else:
+            if note:
+                b['escape_gate_exempt'] = True
+                b['qc_note'] = note
+            tier = 0                          # keep original measurement qc
 
     if tier != 0:
         # two-regime enforcement: demoted branches report NO caliber/wall
