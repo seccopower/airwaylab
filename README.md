@@ -13,6 +13,27 @@ browser — no server, no license, no black box.
 > **Research software.** AirwayLab is not a medical device and must not be used
 > for clinical decision-making.
 
+The whole analysis lands in one self-contained HTML report. A few of its
+derived views (anonymized example case):
+
+**Airway tree** — the segmented bronchial tree; the caliber-reportable core is
+highlighted, the deep tree kept for topology and territories is shown darker.
+
+![Segmented airway tree](docs/img/airway_tree.png)
+
+**Caliber by generation** and **territory vs caliber** (Murray-law fit) — every
+per-branch value is measured on centerline-perpendicular sections.
+
+![Lumen caliber per generation](docs/img/caliber_by_generation.png)
+
+![Served territory vs lumen caliber](docs/img/territory_vs_caliber.png)
+
+**Exploratory 1D air-flow model** — a resistance network solved on the measured
+tree, colored by cumulative pressure with per-territory ventilation; a
+standalone simulation, clearly marked as such, never a clinical measurement.
+
+![Exploratory air-flow simulation](docs/img/flow_model.png)
+
 ## Why another airway tool?
 
 Commercial platforms are validated and powerful, but they are closed: you get a
