@@ -17,6 +17,7 @@ argomenti opzionali servono solo all'ensemble:
 import numpy as np
 
 from flow_core import mass_error, poiseuille_R, r_completion, solve_tree
+from impute_core import imputed_diameter
 
 MU = 1.81e-5          # Pa*s
 RHO = 1.20            # kg/m^3
@@ -111,7 +112,7 @@ def run_model(topo, P, blocked=frozenset(), d_meas_scale=None, imp_scale=None,
                 frac = 1.0 / max(1, len(sibs))
             else:
                 frac = 1.0
-            d = min(d_par, max(dfloor, d_par * frac ** (1.0 / nexp)))
+            d = imputed_diameter(d_par, frac, nexp, dfloor)
             d *= ims.get(b['id'], 1.0)
         diam[b['id']] = d
         for c in kids(b):
