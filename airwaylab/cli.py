@@ -191,6 +191,7 @@ def cmd_run(args):
 
 
 EXPLORATORY_STEPS = [
+    ("leak_qc.py", "airway-mask leak / connectivity QC (exploratory)"),
     ("flow.py", "1D airflow model (exploratory)"),
     ("morphomap.py", "multi-axis structural map (exploratory)"),
     ("uncertainty.py", "robustness ensemble (exploratory)"),
@@ -250,6 +251,24 @@ def _exploratory_and_report(prefix, name, run_env):
                 print(f"    [{f.get('severity')}] {f.get('msg')}")
             print("    'completo' non vuol dire 'corretto': verifica la ripartizione")
             print("    dell'albero contro la segmentazione prima di usare i per-lobo.")
+            print("*" * 70)
+
+    # guardia di leak/connettivita' della segmentazione: vede i leak INTERNI
+    # (cisti/bolle via radius-explosion) e le isole, che la vecchia guardia
+    # "fuori dal polmone" non vedeva. Legge out/leak_qc.json gia' calcolato.
+    lk_path = os.path.join("out", "leak_qc.json")
+    if os.path.exists(lk_path):
+        try:
+            lk = json.load(open(lk_path))
+        except (ValueError, OSError):
+            lk = {}
+        if lk and not lk.get("ok", True):
+            print("\n" + "*" * 70)
+            print("*** ATTENZIONE: POSSIBILI LEAK NELLA SEGMENTAZIONE DELLE VIE AEREE ***")
+            for f in lk.get("flags", []):
+                print(f"    [{f.get('severity')}] {f.get('msg')}")
+            print("    Verifica la maschera (QC axial/coronal) prima di fidarti dei")
+            print("    per-ramo: un leak in cisti/bolle o nell'esofago inquina l'albero.")
             print("*" * 70)
 
     src = os.path.join("out", "report_unico.html")
