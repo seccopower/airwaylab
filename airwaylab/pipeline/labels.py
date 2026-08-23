@@ -207,21 +207,45 @@ def subtree_meany(b):
         _meany_memo[b['id']] = sum(ys) / len(ys)
     return _meany_memo[b['id']]
 
+_nsub_memo = {}
+def n_sub(b):
+    if b['id'] not in _nsub_memo:
+        _nsub_memo[b['id']] = len(_sub_z(b))
+    return _nsub_memo[b['id']]
+
+MIN_SUB_LOBAR = 4   # un ramo lobare ha un sottoalbero sostanziale; i rametti no
+
+def descend_to_split(b, maxstep=6):
+    """Scende attraverso i rami mono-sostanziali (ignorando i rametti minori)
+    fino al nodo che ha >=2 figli sostanziali: la vera biforcazione lobare."""
+    cur = b
+    for _ in range(maxstep):
+        subs = [c for c in kids(cur) if n_sub(c) >= MIN_SUB_LOBAR]
+        if len(subs) != 1:
+            return cur
+        cur = subs[0]
+    return cur
+
+def substantial_kids(b):
+    return [c for c in kids(b) if n_sub(c) >= MIN_SUB_LOBAR]
+
 # ---------- lato destro ----------
-rk = kids(RMB)
+# scendi ai figli SOSTANZIALI della vera biforcazione (ignora i rametti minori
+# che ingannerebbero la scelta del lobo superiore)
+RMB_split = descend_to_split(RMB)
+rk = substantial_kids(RMB_split)
 if rk:
     # lobare superiore dx = figlio col SOTTOALBERO piu' craniale, se chiaramente
-    # piu' craniale della continuazione (soglia direzione del segmento troppo
-    # fragile su anatomie distorte: usiamo la posizione del sottoalbero)
+    # piu' craniale della continuazione (posizione del sottoalbero, non direzione)
     rul = max(rk, key=subtree_meanz)
-    _cont = max((b for b in rk if b is not rul), key=lambda b: b['length'], default=None)
+    _cont = max((b for b in rk if b is not rul), key=lambda b: n_sub(b), default=None)
     if _cont is not None and subtree_meanz(rul) > subtree_meanz(_cont) + 2.0:
         set_name(rul, 'lobare sup dx')
         label_upper_segments(kids(rul), 'dx')
     else:
         rul = None
     rest = [b for b in rk if b is not rul]
-    bi = max(rest, key=lambda b: b['length']) if rest else None
+    bi = max(rest, key=lambda b: n_sub(b)) if rest else None
     if bi is not None:
         set_name(bi, 'bronco intermedio')
         bik = kids(bi)

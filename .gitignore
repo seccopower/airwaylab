@@ -11,6 +11,13 @@ venv/
 *.nii
 out/
 *_report.html
+*_report_unico.html
 *_branches.csv
 *_qc_*.png
 CITATION..cff
+
+# esperimento AeroPath (artefatti locali, NON versionati): venv dedicato e
+# modelli scaricati (centinaia di MB). Il codice del ponte, tools/aeropath_infer.py,
+# resta versionato; questi sono solo dati locali.
+.venv-aero/
+aeropath_models/

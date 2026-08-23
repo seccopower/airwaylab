@@ -1,0 +1,13 @@
+rotta,lobo,lunghezza_mm,tratto_reportabile_pct,diametro_min_reportabile_mm,parete_mediana_reportabile_mm
+trachea,vie centrali,72.0,100,16.07,2.67
+B4 dx,lobare medio,97.0,76,0.02,2.17
+B5 dx,lobare medio,55.0,100,2.19,2.22
+B6 dx,lobare inf dx,136.0,71,2.13,2.21
+B8 dx,lobare inf dx,146.0,93,0.27,2.21
+B9 dx,lobare inf dx,130.0,79,0.41,2.17
+B1+2 sx,lobare sup sx,135.0,100,1.56,1.5
+B3 sx,lobare sup sx,152.0,100,0.0,1.52
+B4 sx,lingulare,135.0,100,0.22,1.54
+B5 sx,lingulare,151.0,100,0.03,1.49
+B6 sx,lobare inf sx,101.0,100,1.26,1.89
+B8 sx,lobare inf sx,138.0,100,1.51,1.68
