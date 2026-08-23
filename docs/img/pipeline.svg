@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 236" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9aa8a6"/>
+    </marker>
+    <style>
+      .box{fill:#f4f7f7;stroke:#c9d6d6;stroke-width:1.5;rx:10;}
+      .t{fill:#0c6f79;font-size:15px;font-weight:700;}
+      .s{fill:#55635f;font-size:11px;}
+      .arw{stroke:#9aa8a6;stroke-width:2;}
+      .ey{fill:#9aa8a6;font-size:11px;letter-spacing:.14em;}
+      .qc{fill:#0c6f79;font-size:12px;font-weight:600;}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1140" height="236" fill="#ffffff"/>
+  <text x="20" y="26" class="ey">AIRWAYLAB · ONE COMMAND</text>
+
+  <!-- boxes -->
+  <g>
+    <rect class="box" x="20"  y="44" width="150" height="100" rx="10"/>
+    <text x="95"  y="88"  class="t" text-anchor="middle">Chest CT</text>
+    <text x="95"  y="108" class="s" text-anchor="middle">DICOM / CD</text>
+
+    <rect class="box" x="210" y="44" width="150" height="100" rx="10"/>
+    <text x="285" y="88"  class="t" text-anchor="middle">Anonymise</text>
+    <text x="285" y="108" class="s" text-anchor="middle">auto series</text>
+
+    <rect class="box" x="400" y="44" width="150" height="100" rx="10"/>
+    <text x="475" y="80"  class="t" text-anchor="middle">Segment</text>
+    <text x="475" y="100" class="s" text-anchor="middle">TotalSegmentator</text>
+    <text x="475" y="115" class="s" text-anchor="middle">(lung_vessels)</text>
+
+    <rect class="box" x="590" y="44" width="150" height="100" rx="10"/>
+    <text x="665" y="80"  class="t" text-anchor="middle">Tree + Measure</text>
+    <text x="665" y="100" class="s" text-anchor="middle">caliber · wall</text>
+    <text x="665" y="115" class="s" text-anchor="middle">on cross-sections</text>
+
+    <rect class="box" x="780" y="44" width="150" height="100" rx="10"/>
+    <text x="855" y="80"  class="t" text-anchor="middle">Context</text>
+    <text x="855" y="100" class="s" text-anchor="middle">lung · territories</text>
+    <text x="855" y="115" class="s" text-anchor="middle">vessels · plugs</text>
+
+    <rect class="box" x="970" y="44" width="150" height="100" rx="10"/>
+    <text x="1045" y="88"  class="t" text-anchor="middle">HTML report</text>
+    <text x="1045" y="108" class="s" text-anchor="middle">one file</text>
+  </g>
+
+  <!-- arrows -->
+  <g>
+    <line class="arw" x1="172" y1="94" x2="206" y2="94" marker-end="url(#ah)"/>
+    <line class="arw" x1="362" y1="94" x2="396" y2="94" marker-end="url(#ah)"/>
+    <line class="arw" x1="552" y1="94" x2="586" y2="94" marker-end="url(#ah)"/>
+    <line class="arw" x1="742" y1="94" x2="776" y2="94" marker-end="url(#ah)"/>
+    <line class="arw" x1="932" y1="94" x2="966" y2="94" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- QC band under the analysis stages -->
+  <rect x="400" y="172" width="720" height="40" rx="8" fill="#e6f0ef"/>
+  <text x="760" y="197" class="qc" text-anchor="middle">QC guards: labeling · lobe plausibility · leak / connectivity · air-witness</text>
+</svg>

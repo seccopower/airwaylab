@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "airwaylab"
-version = "1.0.0"
+version = "0.25.0"
 description = "Transparent quantitative CT analysis of the airways: segmentation, caliber, wall, territories, vessels, mucus plug candidates, interactive reports."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -24,6 +24,7 @@ dependencies = [
   "numpy>=1.26,<3",
   "scipy>=1.11,<2",
   "SimpleITK>=2.3,<3",
+  "nibabel>=5,<6",
   "scikit-image>=0.22,<0.27",
   "networkx>=3.1,<4",
   "pillow>=10,<12",

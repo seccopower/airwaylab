@@ -13,6 +13,11 @@ browser — no server, no license, no black box.
 > **Research software.** AirwayLab is not a medical device and must not be used
 > for clinical decision-making.
 
+**How it works** — one command turns a DICOM folder into the report, with three
+QC guards watching the analysis:
+
+![AirwayLab pipeline](docs/img/pipeline.svg)
+
 The whole analysis lands in one self-contained HTML report. A few of its
 derived views (anonymized example case):
 
@@ -73,8 +78,14 @@ program.
 pip install -e .
 ```
 
-Requires Python ≥ 3.10. Dependencies: numpy, scipy, SimpleITK, scikit-image,
-networkx, pillow.
+Requires Python ≥ 3.10. Dependencies: numpy, scipy, SimpleITK, nibabel,
+scikit-image, networkx, pillow.
+
+**External requirement:** the deep-learning segmentation backend uses
+[TotalSegmentator](https://github.com/wasserth/TotalSegmentator) (task
+`lung_vessels`), installed separately and tested with **v2.18.0**. Its version
+and the airway-mask checksum are recorded per run in `<case>_seg/backend_info.json`
+for reproducibility.
 
 ## Quickstart
 

@@ -1,67 +1,157 @@
 # Changelog
 
-## v1.0.0 — clean baseline
+## 1.0.0 — baseline release (frozen reference)
 
-First consolidated release of AirwayLab as a single, reproducible research
-pipeline. It supersedes the internal prototype iterations (developed and
-refined against anonymized chest CTs, with every measurement change reviewed
-against images by a radiologist) and starts the versioned history from a clean
-baseline.
+First stable, citable baseline: the reference every future change builds on.
+Everything from the prototype phase below, plus, in this cycle:
 
-### Airway tree
-- Two segmentation backends: adaptive explosion-controlled region growing
-  (built-in), or an external / deep-learning airway mask via `--mask`
-  (e.g. TotalSegmentator `lung_vessels`).
-- Skeletonization, branch graph, generations, and best-effort anatomical
-  labels (lobar bronchi, B1–B10), with stable `aid` codes decoupled from the
-  Italian display labels.
-- Sub-voxel centerline refinement + B-spline (`--refine`, automatic with
-  `--mask`): removes the voxel staircase and de-inflates branch lengths; used
-  for the measurement sections themselves.
+- **One-command workflow** — `airwaylab report <dicom> --name <case>`: anonymise
+  (automatic series selection) → segment → full pipeline → exploratory analyses
+  → single tabbed HTML report. Idempotent.
+- **Three QC safety nets**, shown in the report and printed to the terminal:
+  lobe-labeling completeness; lobe-proportion plausibility ("complete ≠
+  correct" — catches anatomically implausible partitions the presence guard
+  cannot see); and airway-mask **leak / connectivity** QC (radius-explosion +
+  disconnected islands — sees leaks *inside* the lung, in cysts/bullae, that an
+  "outside-the-lung-mask" check misses).
+- **Swappable segmentation backend** behind a single seam, with recorded
+  provenance (`backend_info.json`: backend, version, mask checksum).
+  TotalSegmentator is the default; an `aeropath_onnx` adapter consumes a
+  user-supplied AeroPath mask (weights not bundled — licence unstated upstream).
+- **Robust anatomical main-bronchus finding** — structural (subtree side-purity
+  + descend-to-split), resistant to spurious skeleton stubs and to generation
+  inflation that broke the previous generation-1 assumption.
+- **122 unit tests.**
 
-### Measurement, with an honesty regime
-- Lumen caliber by half-max radial boundary on all core sections (~1 mm
-  spacing), area-equivalent diameter, per-branch QC with attempted/accepted
-  section counts.
-- Sector-wise FWHM wall thickness with a positive-parenchyma requirement;
-  WA% defined only where wall is measurable; the physiological cap flags,
-  it does not censor.
-- **Two-regime rule** (enforced end-to-end): with a deep mask, branches below
-  the orientation-dependent resolution floor are kept for topology and
-  territories but report **no caliber** (`sotto-risoluzione`); an air witness
-  rejects mask branches with no visible lumen in the CT; an escape gate
-  (`fuga-contorno`) discards half-max values that overshoot the mask diameter.
-  Demoted branches are nulled in the clinical channel of every product (CSV,
-  profiles, CPR) and preserved only under explicit `*_raw_nonreportable`
-  columns; the HTML report renders them dotted grey and labelled NON
-  REPORTABILE. The witness thresholds and the resolution floor are documented
-  as provisional processing bounds, not validated physical limits.
+External dependency: TotalSegmentator (tested with v2.18.0), installed
+separately; its version is recorded per run in `backend_info.json`.
 
-### Beyond caliber (exploratory)
-- Lung volume, mean lung density, LAA-950, Perc15; dysanapsis; a multi-airway
-  airway-to-lung index and ALR4.
-- Parenchymal territories per terminal branch and a caliber–territory scaling
-  fit.
-- Vascular segmentation (TBV, BV5/BV10), bronchus–artery pairing (BA ratio),
-  airway–vascular mismatch map.
-- Mucus-plug candidate detector (propose-and-confirm, territory-weighted).
-- Straightened CPR panels with synchronized image + longitudinal profiles.
-- A standalone, exploratory 1D air-flow model on the measured tree
-  (`flow.py` / `flow_viz.py`): a series/parallel resistance network solved to
-  convergence, kept off the standard report and clearly marked as a
-  simulation, not a measurement.
+## Prototype phase (v0.1–v0.25)
 
-### Reporting and reproducibility
-- One interactive self-contained HTML report per case; per-branch CSV; coronal
-  and axial QC images (always review before trusting the numbers).
-- One-command entry point `auto_report.py`: DICOM folder → automatic series
-  selection → anonymization → segmentation → full pipeline → report.
-- Run provenance (backend, refinement, version) recorded in `seg_info.json`;
-  per-run isolated subprocess environments.
-- Apache-2.0; CI runs the synthetic-phantom test suite on every push.
+AirwayLab grew through 20 internal iterations on two real (anonymized) chest
+CTs and one public test volume, with every measurement change reviewed against
+images by a radiologist. Highlights of the prototype phase (v0.1–v0.20,
+August 2026), condensed:
 
-> **Research software.** AirwayLab is not a medical device and must not be used
-> for clinical decision-making. Exploratory indices are research hypotheses and
-> must not be interpreted as validated measurements. See
-> [`docs/VALIDATION_BACKLOG.md`](docs/VALIDATION_BACKLOG.md) for the open
-> validation program.
+- **v0.1–v0.4** — airway segmentation (explosion-controlled region growing with
+  anatomical seed scoring), skeleton/graph/generations, first measurements,
+  single-command runner, DICOM/patient-CD anonymizer.
+- **v0.5–v0.7** — half-max lumen boundary on recentered perpendicular sections
+  (replacing mask-edge diameters after radiologist review); PCA tangents;
+  per-branch verification snapshots; automatic QC classes + interactive
+  reader exclusions with exportable audit list.
+- **v0.8–v0.10** — sector-wise wall thickness on the same sections; double
+  contour (lumen + outer wall in valid sectors); physiological cap and
+  circular-coherence filter; positive parenchyma requirement; wall chart.
+- **v0.11–v0.13** — longitudinal caliber/wall profiles; lung segmentation and
+  densitometry; dysanapsis; parenchymal territories and Murray-law fit;
+  written measurement protocol.
+- **v0.14–v0.16** — vascular segmentation (TBV, BV5), vascular graph,
+  bronchus-artery pairing (BA ratio), airway-vascular mismatch map; mucus plug
+  candidate detector (propose-and-confirm, territory-weighted); ALR4 per
+  Shimada 2025; straightened CPR with synchronized image + profile panel.
+- **v0.21** — first packaged release: `airwaylab` CLI, Apache-2.0, tests on a
+  synthetic tube phantom, CI, English documentation.
+- **v0.22** — hardening pass following an independent external adversarial review:
+  LPS orientation canonicalization on input (with RAS regression test); stable
+  anatomical ids (`anatomy.py`) decoupled from display labels, with ALR4
+  producibility test; full geometry (origin/direction) on downsampled masks;
+  diagnostic `QualityError` guards on empty/implausible masks; soft-fail
+  labeling; measurement code deduplicated into `lumen.py`; configurable
+  resampling spacing with a memory guard (`--spacing` / `AIRWAYLAB_SPACING`);
+  dependency version bounds; HTML-escaped case names; `AGENTS.md` with
+  four-member team rules (maintainer, architect, adversarial reviewer, local
+  operator).
+- **v0.25.2 (same PR, third review round)** — the remaining floor blocker:
+  the per-axis projection formula max(s_i·sqrt(1−t_i²)) underestimated the
+  worst in-plane resolution on oblique planes (~13% at 45° z-y on
+  0.72/0.72/1.25 mm); replaced with the largest eigenvalue of the projected
+  anisotropic sampling metric P·M·P (P = I − t·tᵀ, M = diag(s²)) — the true
+  worst direction, which mixes axes. Branch-level floors now aggregate LOCAL
+  tangents sampled along the path (max of per-section floors) instead of the
+  global chord, so curved branches are floored by their worst-oriented
+  segment. CPR branch boundaries use half-open intervals (bifurcation sample
+  belongs to the starting branch). New tests: oblique worst-plane value
+  (explicitly rejecting the per-axis formula), curved branch vs chord,
+  split_reportable invariant (unit-level), 23-column cardinality, provenance
+  keys guard (source-level; synthetic end-to-end coverage tracked in the
+  test-coverage issue). OBSERVED EFFECT on the single development case
+  (caso02, DL mask, 0.72x0.72x1.25 mm): with the corrected orientation-
+  dependent floor, 91 of 451 branches (~20%) remain caliber-reportable;
+  350 are `sotto-risoluzione`, 9 `fuga-contorno`, 1 `no-lume`. This is the
+  observed behaviour of a still-provisional gate on one exam — not a
+  validation result; per-branch floors on this acquisition span
+  2.17-3.75 mm (median 3.35).
+- **v0.25.1 (same PR, second review round)** — the reviewer's five blockers:
+  demotion now propagates to EVERY product (profiles.json and cpr.json null
+  the clinical d/w channel for demoted branches/route segments and carry the
+  values only under `*_raw_nonreportable`, with a per-sample `reportable`
+  mask in CPR); the HTML report renders non-reportable curves dotted grey
+  with explicit NON REPORTABILE labels and hovers (no raw value under a
+  normal label anywhere); the caliber floor is orientation-dependent — the
+  coarsest native spacing projected into each branch's section plane
+  (in-plane branches on 1.25 mm slices are floored at 3.75 mm, axial ones at
+  2.17 mm; conservative worst-axis fallback without orientation; per-branch
+  `floor_calibro_mm` exported); the plug-detector mask-diameter fallback is
+  restricted to `sotto-risoluzione` (never `no-lume`/`fuga-contorno`); audit
+  completeness — `d_min_raw`/`wa_raw` join the CSV as explicit
+  `*_raw_nonreportable` columns and `d_min_hm`/`d_max_hm` are preserved as
+  raw instead of dropped; provenance is written right after segmentation so
+  `map_data.json`/HTML expose backend, refinement and version.
+- **v0.25** — two-regime rule ENFORCED (response to third adversarial review,
+  13 points, pre-release this time). The v0.24 release *declared* that demoted
+  branches report no caliber but still exported the values: now `d_mean`,
+  `d_min`, `wall`, `wa_pct` are nulled for `no-lume`/`sotto-risoluzione`/
+  `fuga-contorno` branches, with originals preserved in explicit
+  `*_raw_nonreportable` audit columns. One unified per-branch CSV schema with
+  and without `--mask` (witness columns empty on built-in runs). Witness now
+  samples HU/EDT tri-linearly at the sub-voxel centerline (no grid-phase
+  dependence) and its thresholds are documented as PROVISIONAL, single-case
+  development values (`qc_params.py`; ROC validation in the backlog). The
+  caliber floor is anchored to the native in-plane spacing, so upsampling
+  cannot loosen it (it remains a processing bound, not a validated physical
+  resolution limit; slice thickness not yet accounted). CPR and the mucus-plug
+  detector now use the refined centerline too (v0.24 left them on the raw
+  skeleton — undeclared inconsistency, fixed); plug screening falls back to
+  the mask diameter for sub-resolution leaves. Snapshots and profiles of
+  demoted branches remain visible BY DESIGN (every branch ships its image,
+  including excluded ones) but carry a NON REPORTABILE badge/flag. Run
+  provenance (`backend`, `refined_centerline`, `tight_small_window`, version)
+  recorded in `seg_info.json`; per-run subprocess environments (no flag
+  leakage between programmatic runs). Effects of the refined centerline on
+  branch length (−12% staircase de-inflation) propagate to: stump QC (3 mm),
+  CSV lengths, report geometry, section positions/tangents/counts, profile
+  axes, witness sampling — and indirectly to dysanapsis/ALR4, caliber-
+  territory fit and BA ratio via diameters and QC; topology, generations and
+  labels are built before refinement and unchanged. Tests: witness gates
+  exercised via the production module with borderline cases (median ±1 HU,
+  air fraction 59/61%, bimodal half-mucus lumen); curved-tube phantom with
+  known arc length (chord explicitly rejected as truth); floor anchoring.
+- **v0.24** — deep-learning segmentation backend (radiologist-validated on
+  caso02, 451 branches vs 97): `airwaylab run --mask` accepts an externally
+  produced airway mask (e.g. TotalSegmentator `lung_airways`) and switches on
+  three new defenses. (1) *Air witness*: every branch is verified against the
+  CT itself — median centerline HU and air fraction — so a generous DL mask
+  cannot introduce airways with no visible lumen (caso02: 1/451 rejected).
+  (2) *Two-regime rule*: branches whose mask diameter is below the resolution
+  floor (~3 voxels) are kept for topology/territories but report NO caliber
+  (`sotto-risoluzione`); an escape gate (`fuga-contorno`) discards half-max
+  values that overshoot the mask diameter. (3) *Tight small-airway search
+  window*: prevents the half-max rays from skipping thin walls onto nearby
+  structures (median caliber at generation 8-9 dropped from ~5.5 to ~4 mm on
+  the DL mask). Plus: sub-voxel centerline refinement + B-spline (`--refine`;
+  automatic with `--mask`) — recentering on the lumen centroid removes the
+  voxel staircase and skeleton wander, de-inflating branch lengths by ~12%
+  (caso02 trachea: raw path 137 mm vs 115 mm chord; spline 118 mm) and used
+  for the measurement sections themselves; 3D-map polylines smoothed
+  (cosmetic fallback when refinement is off); per-branch witness columns
+  (`hu_lume`, `aria_pct`, `d_maschera_mm`, `qc_misura`) in the CSV; tests for
+  recentering, spline de-inflation and witness thresholds.
+- **v0.23** — response to second adversarial review (25 points, triaged in
+  `docs/REVIEW_BACKLOG.md`): caliber now measured on ALL core sections at
+  ~1 mm spacing with attempted/accepted counts (removes the representative-
+  section bias that discarded stenoses/dilatations); the physiological wall
+  cap no longer censors measurements — it is a QC flag (% sectors above cap
+  reported); d_min/d_max from measured sections; README endpoint table gains
+  core/exploratory status; "every number ships with its image" claim made
+  precise; WA% formula documented.
