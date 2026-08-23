@@ -233,6 +233,25 @@ def _exploratory_and_report(prefix, name, run_env):
             print("    La segmentazione può essere corretta lo stesso: verifica il QC.")
             print("*" * 70)
 
+    # guardia di plausibilita': 'completo' != 'corretto'. Anche con 6/6 lobi la
+    # partizione puo' essere anatomicamente implausibile (es. lobo superiore dx allo
+    # 0.2% del volume). Legge il controllo gia' calcolato in out/morphomap.json.
+    mm_path = os.path.join("out", "morphomap.json")
+    if os.path.exists(mm_path):
+        try:
+            plaus = json.load(open(mm_path)).get("plausibilita_lobare", {})
+        except (ValueError, OSError):
+            plaus = {}
+        if plaus and not plaus.get("ok", True):
+            print("\n" + "*" * 70)
+            print("*** ATTENZIONE: PROPORZIONI LOBARI IMPLAUSIBILI ***")
+            print("    l'etichettatura è completa (6/6) ma i volumi lobari non tornano:")
+            for f in plaus.get("flags", []):
+                print(f"    [{f.get('severity')}] {f.get('msg')}")
+            print("    'completo' non vuol dire 'corretto': verifica la ripartizione")
+            print("    dell'albero contro la segmentazione prima di usare i per-lobo.")
+            print("*" * 70)
+
     src = os.path.join("out", "report_unico.html")
     if os.path.exists(src):
         dst = prefix + "_report_unico.html"

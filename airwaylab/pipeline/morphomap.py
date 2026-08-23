@@ -23,6 +23,7 @@ import nibabel as nib
 import numpy as np
 
 from label_qc import labeling_banner_html, labeling_status
+from plausibility_core import lobe_plausibility, plausibility_banner_html
 from morphomap_core import (
     SCHEMA_VERSION,
     aggregate_lobes,
@@ -79,8 +80,20 @@ if lab_banner:
     print('  ATTENZIONE: etichettatura lobare incompleta —',
           labeling_status(per.keys())['missing'], 'mancanti')
 
+# --- controllo di plausibilita' delle proporzioni lobari (completo != corretto) ---
+# usa il volume lobare (conteggio voxel del territorio): intercetta le partizioni
+# implausibili che la guardia di presenza non puo' vedere.
+vol_by_lobe = {lb: s['n_vox'] for lb, s in per.items()}
+plaus = lobe_plausibility(vol_by_lobe)
+plaus_banner = plausibility_banner_html(vol_by_lobe)
+if not plaus['ok']:
+    print('  ATTENZIONE: proporzioni lobari implausibili (controllo plausibilita\'):')
+    for f in plaus['flags']:
+        print(f"    [{f['severity']}] {f['msg']}")
+
 json.dump({'schema_version': SCHEMA_VERSION, 'status': 'exploratory',
            'labeling': labeling_status(per.keys()),
+           'plausibilita_lobare': plaus,
            'metrica': 'media della frazione LAA inspiratoria (<-950 HU) pesata per le '
                       'quote di flusso del modello resistivo: w_i=q_i/sum(q), I=sum(w_i*LAA_i). '
                       'I pesi sono allocazione relativa del modello nello scenario '
@@ -163,6 +176,7 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
   ⚠ <b>Descrittore strutturale, NON funzionale.</b> Indice = <b>media della frazione LAA inspiratoria pesata dalle quote di flusso del modello resistivo</b>: w<sub>i</sub> = q<sub>i</sub>/Σq,&nbsp; I = Σ w<sub>i</sub>·LAA<sub>i</sub>. I pesi w<sub>i</sub> rappresentano <b>l'allocazione relativa ottenuta dal modello nello scenario prespecificato</b> (flusso totale fisso, Pedley attivo) — <b>non</b> sono misure regionali di ventilazione. <b>Non</b> è ventilazione, perfusione, spazio morto né distruzione. La bassa attenuazione inspiratoria può riflettere <b>iperinflazione o altre cause non enfisematose</b>; <b>l'air-trapping non è identificabile da questa acquisizione e richiede dati espiratori</b>. Dipende da soglia HU e volume inspiratorio (confronto solo a parità di protocollo). Le quote q vengono dal modello e sono in gran parte da diametri imputati. Esplorativo.</div>
 {lab_banner}
+{plaus_banner}
 <div class="tiles">
   <div class="tile hero"><div class="k">LAA inspiratoria pesata dal modello resistivo</div><div class="v">{round(head/100, 3)}</div><div class="u">frazione = {head} punti percentuali di LAA · I = Σ (q<sub>i</sub>/Σq)·LAA<sub>i</sub> · NON una % di flusso/ventilazione</div></div>
   <div class="tile"><div class="k">Bassa attenuazione inspiratoria (LAA −950)</div><div class="v">{round(100 * glob['laa_lung'], 1)}<span class="u">%</span></div><div class="u">media polmone</div></div>
