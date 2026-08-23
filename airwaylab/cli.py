@@ -260,26 +260,6 @@ def _exploratory_and_report(prefix, name, run_env):
     return None
 
 
-def _run_totalsegmentator(ct, segdir):
-    """Lancia TotalSegmentator (task lung_vessels) se le maschere non esistono.
-    Ritorna il percorso della maschera vie aeree."""
-    airways = os.path.join(segdir, "lung_airways.nii.gz")
-    if os.path.exists(airways):
-        print(f"maschere gia' presenti in {segdir} — salto TotalSegmentator")
-        return airways
-    exe = shutil.which("TotalSegmentator") or shutil.which("totalsegmentator")
-    if not exe:
-        sys.exit("TotalSegmentator non trovato nel PATH. Installalo, oppure fornisci "
-                 "gia' le maschere in " + segdir + " (lung_airways/arteries/veins).")
-    print(f"\n=== TotalSegmentator (task lung_vessels) -> {segdir} ===")
-    r = subprocess.run([exe, "-i", ct, "-o", segdir, "--task", "lung_vessels"])
-    if r.returncode != 0:
-        sys.exit(f"ERROR in TotalSegmentator (exit {r.returncode})")
-    if not os.path.exists(airways):
-        sys.exit("TotalSegmentator non ha prodotto lung_airways.nii.gz in " + segdir)
-    return airways
-
-
 def cmd_report(args):
     """DICOM -> report unico, in un solo comando. Idempotente: salta gli step
     i cui output esistono gia'. Anonimizza (scelta serie automatica), segmenta,
@@ -297,8 +277,12 @@ def cmd_report(args):
         extra = [str(args.series)] if args.series is not None else []
         _step("anonymize.py", [args.dicom_dir, ct, *extra])
 
-    # 2) segmentazione DL (vie aeree + arterie/vene)
-    mask = _run_totalsegmentator(ct, segdir)
+    # 2) segmentazione DL delle vie aeree, dietro il backend sostituibile
+    #    (scelta semplice e prevedibile; provenienza in segdir/backend_info.json).
+    #    I vasi (arterie/vene) restano dal task lung_vessels di TotalSegmentator.
+    sys.path.insert(0, PIPE)
+    from airway_backend import segment_airways
+    mask = segment_airways(ct, segdir, requested=getattr(args, "backend", None))
 
     # 3) pipeline completa (riusa cmd_run): backend DL, arterie/vene auto accanto al mask
     run_args = argparse.Namespace(
@@ -383,6 +367,11 @@ def main():
     prep.add_argument("--series", type=int, default=None,
                       help="forza l'indice di serie (default: scelta automatica della "
                       "ricostruzione sottile piu' adatta)")
+    prep.add_argument("--backend", default=None,
+                      help="backend di segmentazione delle vie aeree da usare "
+                      "(default: scelta automatica semplice e prevedibile; attualmente "
+                      "'totalsegmentator'). La provenienza finisce in "
+                      "<caso>_seg/backend_info.json.")
     prep.add_argument("--spacing", type=float, default=None,
                       help="spacing isotropico di ricampionamento in mm")
     prep.set_defaults(func=cmd_report)
