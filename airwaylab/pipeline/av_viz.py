@@ -12,6 +12,8 @@ import os
 
 import numpy as np
 
+from label_qc import labeling_banner_html
+
 av = json.load(open('out/vascular_av.json'))
 per = av.get('per_lobo', {})
 ca, cv = av['cloud_art'], av['cloud_vein']
@@ -46,6 +48,7 @@ if anch:
 
 lobi = [k for k in per if k != 'CENTRAL']
 lobi.sort(key=lambda k: -(per[k].get('art_ml') or 0))
+lab_banner = labeling_banner_html(lobi)
 rows = ''.join(
     f"<tr><td>{k}</td><td>{per[k].get('art_ml')}</td><td>{per[k].get('vein_ml')}</td>"
     f"<td>{per[k].get('av_ratio')}</td></tr>"
@@ -86,6 +89,7 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <p class="sub">{name} · maschere DL separate (TotalSegmentator) · le ancore <b>D</b>/<b>S</b> ruotano con l'anatomia</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
   ⚠ <b>Esplorativo. Volumi della MASCHERA vascolare, non volume ematico né perfusione</b> (TC senza contrasto). I volumi <b>dipendono dalla segmentazione e dalla profondità raggiunta</b>, e il segmentatore può avere <b>sensibilità diversa per arterie e vene</b>. Separazione A/V da verificare: <b>guarda prima questa vista come QC</b>. Il pruning / BV5 (piccoli vasi) è stato <b>ritirato</b>: la stima voxelwise da EDT non è valida (serve un metodo di calibro segmentale/scale-space; sarebbe una misura nuova, non una calibrazione).</div>
+{lab_banner}
 <div class="tiles">
   <div class="tile"><div class="k">Volume maschera arteriosa</div><div class="v">{av['arterie_ml']} <span class="u">ml</span></div></div>
   <div class="tile"><div class="k">Volume maschera venosa</div><div class="v">{av['vene_ml']} <span class="u">ml</span></div></div>

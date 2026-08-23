@@ -215,6 +215,24 @@ def _exploratory_and_report(prefix, name, run_env):
         shutil.copy(main_report, os.path.join("out", "report_main.html"))
     print("\n=== report_unico.py — unified tabbed report ===")
     _step("report_unico.py", [], env=env)
+    # guardia: etichettatura lobare completa? (altrimenti i per-lobo sono parziali)
+    ti_path = os.path.join("out", "territory_index.json")
+    if os.path.exists(ti_path):
+        import sys as _sys
+        _sys.path.insert(0, PIPE)
+        from label_qc import labeling_status
+        lobi = {v.get("lobe") for v in json.load(open(ti_path)).values()}
+        st = labeling_status(lobi)
+        if not st["complete"]:
+            print("\n" + "*" * 70)
+            print("*** ATTENZIONE: ETICHETTATURA LOBARE INCOMPLETA ***")
+            print(f"    riconosciuti {st['n_present']}/{st['n_expected']} lobi; "
+                  f"mancano: {', '.join(st['missing'])}")
+            print("    I risultati PER-LOBO (mappa multi-asse, discordanza, vascolare)")
+            print("    rappresentano solo una parte del polmone e NON sono affidabili.")
+            print("    La segmentazione può essere corretta lo stesso: verifica il QC.")
+            print("*" * 70)
+
     src = os.path.join("out", "report_unico.html")
     if os.path.exists(src):
         dst = prefix + "_report_unico.html"

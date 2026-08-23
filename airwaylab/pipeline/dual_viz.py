@@ -13,6 +13,8 @@ import os
 
 import numpy as np
 
+from label_qc import labeling_banner_html
+
 data = json.load(open('out/map_data.json'))
 reg = json.load(open('out/discordance_regional.json')) if os.path.exists('out/discordance_regional.json') else {'per_lobo': {}}
 per_lobo = reg.get('per_lobo', {})
@@ -55,6 +57,7 @@ for b in branches:
 
 # barre per lobo: DUE assi distinti (copertura maschere vs morfometria BA)
 lobi = [k for k in per_lobo if k != 'CENTRAL']
+lab_banner = labeling_banner_html(lobi)
 lobi.sort(key=lambda k: -(per_lobo[k].get('coverage_gap_frac') or 0))
 mm = [round(100 * (per_lobo[k].get('coverage_gap_frac') or 0), 1) for k in lobi]
 bg = [round(100 * (per_lobo[k].get('ba_gt1_frac') or 0), 1) for k in lobi]
@@ -125,6 +128,7 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <p class="sub">{name} · due assi DISTINTI e non combinati: copertura delle maschere e rapporto bronco–arteria — esplorativi, non funzionali</p>
 <div style="background:#7a1f1f;color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:13px">
   ⚠ <b>Indici ESPLORATIVI e DESCRITTIVI, non validati, non diagnosi.</b> L'asse <b>copertura</b> misura parenchima vicino a un vaso ma <b>non rappresentato nella maschera delle vie aeree</b>: la via non rappresentata resta <i>missing</i> (non entra come diametro zero). Cause possibili: limite di risoluzione, diversa profondità di segmentazione, errore di segmentazione o reale interruzione anatomica — <b>indistinguibili qui</b>; <b>non</b> è occlusione (richiederebbe evidenza CT positiva). L'asse <b>morfometrico BA</b> è calcolato solo su coppie reportabili e <b>non distingue</b> dilatazione bronchiale da assottigliamento arterioso. I due assi <b>non vanno fusi</b>. Confronto <b>tra lobi</b>.</div>
+{lab_banner}
 <div class="card">
   <h2>Albero colorato dal rapporto bronco–arteria</h2>
   <p class="note">Rosso = bronco più largo dell'arteria satellite (BA&gt;1); blu = più stretto; grigio ≈ 1. Un BA&gt;1 <b>non</b> distingue dilatazione bronchiale da riduzione arteriosa. I rami non accoppiati sono grigio chiaro e sottili.</p>
