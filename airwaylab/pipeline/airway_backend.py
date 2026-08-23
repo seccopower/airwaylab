@@ -72,8 +72,73 @@ class TotalSegmentatorBackend:
         return airways
 
 
-# registro dei backend disponibili. STEP 2 aggiungera' qui l'adapter AeroPath-ONNX.
-REGISTRY = {b.name: b for b in (TotalSegmentatorBackend(),)}
+class AeroPathOnnxBackend:
+    """Adapter per il modello AGU-Net di AeroPath (Raidionics, ONNX, gira su CPU).
+
+    Licenza — la ragione del disegno. Il CODICE di AeroPath e' MIT e le librerie
+    Raidionics (raidionicsseg/Raidionics-models) sono BSD-2, MA la licenza dei PESI
+    del modello vie aeree non e' dichiarata esplicitamente. Percio' AirwayLab NON
+    impacchetta i pesi: l'adapter CONSUMA una maschera prodotta da AeroPath sulla
+    macchina dell'utente. Usare un modello in locale non e' ridistribuirlo — ed e'
+    esattamente il pattern raccomandato dalla review (backend fuori processo,
+    fornito dall'utente). La maschera entra poi nel percorso a backend esterno di
+    AirwayLab (air witness, gate di risoluzione, centerline raffinata), come una
+    qualsiasi maschera --mask.
+
+    v1 = consumatore di maschera (nessun run automatico, che va validato insieme):
+      - riusa una maschera AeroPath gia' presente in segdir; oppure
+      - adotta il file indicato da AIRWAYLAB_AEROPATH_MASK.
+    """
+    name = "aeropath_onnx"
+    mask_name = "aeropath_airways.nii.gz"
+
+    def _existing(self, segdir):
+        p = os.path.join(segdir, self.mask_name)
+        return p if os.path.exists(p) else None
+
+    def _env_mask(self):
+        p = os.environ.get("AIRWAYLAB_AEROPATH_MASK")
+        return p if p and os.path.exists(p) else None
+
+    def is_available(self, ct, segdir):
+        # disponibile solo se l'utente ha gia' prodotto la maschera AeroPath:
+        # cosi' resta un opt-in esplicito e prevedibile (TS resta il default finche'
+        # non c'e' una maschera AeroPath da usare).
+        return bool(self._existing(segdir) or self._env_mask())
+
+    def version(self):
+        # versione della libreria di inferenza, se installata (best effort)
+        try:
+            from importlib.metadata import version
+            return version("raidionicsseg")
+        except Exception:
+            return os.environ.get("AIRWAYLAB_AEROPATH_VERSION")
+
+    def run(self, ct, segdir):
+        os.makedirs(segdir, exist_ok=True)
+        got = self._existing(segdir)
+        if got:
+            print(f"maschera AeroPath gia' presente in {segdir} — la riuso")
+            return got
+        env_mask = self._env_mask()
+        if env_mask:
+            dst = os.path.join(segdir, self.mask_name)
+            print(f"adotto la maschera AeroPath da AIRWAYLAB_AEROPATH_MASK: {env_mask}")
+            if os.path.abspath(env_mask) != os.path.abspath(dst):
+                shutil.copy(env_mask, dst)
+            return dst
+        raise BackendError(
+            "backend aeropath_onnx: nessuna maschera disponibile. Produci la maschera "
+            "delle vie aeree con AeroPath (demo HuggingFace o raidionics), poi indicala "
+            "con AIRWAYLAB_AEROPATH_MASK=/percorso/mask.nii.gz (oppure copiala in "
+            + os.path.join(segdir, self.mask_name) + "). "
+            "I pesi non sono impacchettati in AirwayLab: licenza dei pesi non dichiarata.")
+
+
+# registro dei backend disponibili. L'ordine di preferenza (airway_backend_core)
+# mette aeropath_onnx davanti: appena una maschera AeroPath e' disponibile diventa
+# il default in automatico; TS resta il default finche' non lo e'.
+REGISTRY = {b.name: b for b in (TotalSegmentatorBackend(), AeroPathOnnxBackend())}
 
 
 def available_backends(ct, segdir):
