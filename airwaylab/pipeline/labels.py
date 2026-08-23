@@ -8,6 +8,8 @@ out/tree.json in place, prima di measure.py).
 import numpy as np
 import json
 
+from labels_core import choose_mains
+
 tree = json.load(open('out/tree.json'))
 pts = np.array(tree['points'])
 ISO = tree['iso']
@@ -57,13 +59,45 @@ def pick(cands, score_fn):
 gen0 = [b for b in branches if b['gen'] == 0]
 trachea = max(gen0, key=lambda b: b['length']) if gen0 else None
 set_name(trachea, 'trachea')
-g1 = sorted([b for b in branches if b['gen'] == 1],
-            key=lambda b: endpoint(b)[0])
-if len(g1) < 2:
+# --- bronchi principali: individuazione ROBUSTA per struttura, non per gen1 ---
+# (lo scheletro puo' creare monconi spuri alla carena o saltare generazioni; i
+#  principali sono i due rami grandi, ciascuno puro di un lato, piu' prossimali)
+mid_x = endpoint(trachea)[0] if trachea is not None else 0.0
+_depth = {}
+def _set_depth(b, d):
+    _depth[b['id']] = d
+    for c in kids(b):
+        _set_depth(c, d + 1)
+if trachea is not None:
+    import sys as _sys
+    _sys.setrecursionlimit(20000)
+    _set_depth(trachea, 0)
+_subinfo = {}
+def _calc(b):
+    ex = endpoint(b)[0]
+    nl = 1 if ex > mid_x else 0          # LPS: +x = sinistra paziente
+    nr = 1 - nl
+    n = 1
+    for c in kids(b):
+        cn, cl, cr = _calc(c)
+        n += cn; nl += cl; nr += cr
+    _subinfo[b['id']] = {'depth': _depth.get(b['id'], 0),
+                         'n_sub': n, 'n_left': nl, 'n_right': nr}
+    return n, nl, nr
+if trachea is not None:
+    _calc(trachea)
+
+_rid, _lid = choose_mains(_subinfo)
+RMB, LMB = by_id.get(_rid), by_id.get(_lid)
+if RMB is None or LMB is None:
+    # fallback storico: i due rami di generazione 1 per x
+    g1 = sorted([b for b in branches if b['gen'] == 1], key=lambda b: endpoint(b)[0])
+    if len(g1) >= 2:
+        RMB, LMB = g1[0], g1[-1]
+if RMB is None or LMB is None:
     json.dump(tree, open('out/tree.json', 'w'))
     print('WARNING [labels]: no main bifurcation found; anatomical labels not assigned')
     raise SystemExit(0)   # soft-fail: pipeline continues without labels
-RMB, LMB = g1[0], g1[-1]              # destro = x minore in LPS
 set_name(RMB, 'bronco principale dx')
 set_name(LMB, 'bronco principale sx')
 
@@ -148,22 +182,54 @@ def label_lower_lobe(lobar, side, medial_sign):
             set_name(m, f'tronco basale {side}')
     label_basal(pool, side, medial_sign=medial_sign)
 
+# cranialita' del SOTTOALBERO (robusta a distorsioni del segmento di partenza)
+_meanz_memo = {}
+def _sub_z(b):
+    zs = [endpoint(b)[2]]
+    for c in kids(b):
+        zs += _sub_z(c)
+    return zs
+def subtree_meanz(b):
+    if b['id'] not in _meanz_memo:
+        zs = _sub_z(b)
+        _meanz_memo[b['id']] = sum(zs) / len(zs)
+    return _meanz_memo[b['id']]
+
+_meany_memo = {}
+def _sub_y(b):
+    ys = [endpoint(b)[1]]
+    for c in kids(b):
+        ys += _sub_y(c)
+    return ys
+def subtree_meany(b):
+    if b['id'] not in _meany_memo:
+        ys = _sub_y(b)
+        _meany_memo[b['id']] = sum(ys) / len(ys)
+    return _meany_memo[b['id']]
+
 # ---------- lato destro ----------
 rk = kids(RMB)
 if rk:
-    # lobare superiore dx: decolla craniale e laterale (x-)
-    rul = pick(rk, lambda b: direction(b)[2] - direction(b)[0])
-    if rul is not None and direction(rul)[2] > -0.1:
+    # lobare superiore dx = figlio col SOTTOALBERO piu' craniale, se chiaramente
+    # piu' craniale della continuazione (soglia direzione del segmento troppo
+    # fragile su anatomie distorte: usiamo la posizione del sottoalbero)
+    rul = max(rk, key=subtree_meanz)
+    _cont = max((b for b in rk if b is not rul), key=lambda b: b['length'], default=None)
+    if _cont is not None and subtree_meanz(rul) > subtree_meanz(_cont) + 2.0:
         set_name(rul, 'lobare sup dx')
         label_upper_segments(kids(rul), 'dx')
+    else:
+        rul = None
     rest = [b for b in rk if b is not rul]
     bi = max(rest, key=lambda b: b['length']) if rest else None
     if bi is not None:
         set_name(bi, 'bronco intermedio')
         bik = kids(bi)
-        # medio: anteriore e caudale
-        ml = pick(bik, lambda b: -direction(b)[1])
-        if ml is not None and direction(ml)[1] < -0.25:
+        # lobare medio = figlio col SOTTOALBERO piu' ANTERIORE (+y = posteriore),
+        # se chiaramente piu' anteriore della continuazione (tronco/inferiore)
+        ml = min(bik, key=subtree_meany) if bik else None
+        _mlcont = max((b for b in bik if b is not ml), key=lambda b: b['length'], default=None)
+        if ml is not None and _mlcont is not None and subtree_meany(ml) < subtree_meany(_mlcont) - 2.0:
             set_name(ml, 'lobare medio')
             mlk = sorted(kids(ml), key=lambda b: endpoint(b)[0])
             if len(mlk) >= 2:
