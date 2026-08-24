@@ -27,6 +27,7 @@ TAIL_STEPS = [
     ("tapering.py", "airway tapering (child/parent ratio + gradient)"),
     ("treestats.py", "tree morphometry: counts + fractal dimension"),
     ("lung.py", "lungs, densitometry, dysanapsis"),
+    ("parenchyma.py", "parenchyma beyond mean density (heterogeneity, LAA clusters)"),
     ("territory.py", "parenchymal territories + Murray fit"),
     ("vessels.py", "vascular tree: TBV, BV5"),
     ("vtree.py", "vascular graph"),

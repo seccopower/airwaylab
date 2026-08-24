@@ -178,6 +178,17 @@ sono sottratte per costruzione (rilevante per il leak-QC). *Codice:* `lung.py` �
 **`perc15_hu` — Perc15** — 15° percentile dell'istogramma HU polmonare. Misura di
 enfisema robusta alla soglia. *Codice:* `lung.py`.
 
+**Parenchima oltre la densità media** — *Cos'è:* il segnale delle piccole vie aeree /
+mosaic che MLD e LAA-950 nascondono. *Come:* (1) **forma dell'istogramma** HU del
+polmone — media, SD, **skewness**, **curtosi** (descrittori nominati); (2)
+**eterogeneità** = SD e IQR delle medie di densità calcolate a blocchi (~15 mm) —
+surrogato del **mosaic attenuation**; (3) **cluster LAA** (< −950): numero, frazione
+del cluster maggiore, ed esponente **D** (Mishima) dalla legge di potenza della
+distribuzione cumulativa (D basso = cluster grandi coalescenti = enfisema vero; D alto
+= tanti cluster piccoli). *Limiti:* dipende da soglia HU / kernel / volume; griglia di
+analisi ×3; su inspiratoria non è air-trapping. *Codice:* `parenchyma_core.py`,
+`parenchyma.py` → `out/parenchyma.json`.
+
 **Territori (`terr_ml`)** — Partizione di Voronoi del parenchima: ogni voxel al
 **seme terminale più vicino** (metà distale di ogni ramo terminale, EDT euclidea);
 territorio del ramo = somma del sottoalbero; per lobo risalendo all'antenato lobare.
@@ -302,6 +313,7 @@ della maschera. Rende ogni risultato riproducibile e auto-documentato. *Codice:*
 | `<caso>_routes.csv` | rotte per la CPR |
 | `out/seg_info.json` | iso, spacing nativo, backend, versione, provenienza |
 | `out/lung_metrics.json` | volume, MLD, LAA-950, Perc15, dysanapsis, ALR4 |
+| `out/parenchyma.json` | istogramma HU (skew/kurt), eterogeneità, cluster LAA (D) |
 | `out/pi10.json` | Pi10 (√WA a Pi=10), slope, R², n |
 | `out/tapering.json` | rapporto figlio/genitore, gradiente %/cm |
 | `out/treestats.json` | conteggi rami/terminali/gen, lunghezza, AFD |
