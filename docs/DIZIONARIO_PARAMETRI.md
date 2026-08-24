@@ -112,6 +112,18 @@ generazione e globale. *Significato:* BA > 1 = bronco dilatato (bronchiectasia).
 
 ---
 
+**Morfometria dell'albero — conteggi + AFD** — *Cos'è:* quanto in profondità e quanto
+complesso arriva l'albero visibile (indice di completezza + rimodellamento). *Come:*
+conteggi (`n_branches`, `n_terminals`, per generazione, lunghezza totale) dai rami; e
+**AFD** (Airway Fractal Dimension) = box-counting sullo scheletro 3D — per una serie
+di lati di cella `s` si contano le celle occupate `N(s)`; `AFD = pendenza di
+log N(s) su log(1/s)`. *Significato:* nell'asma conteggio periferico e AFD calano.
+*Limiti:* conteggi e AFD dipendono dalla **profondità di segmentazione e dal
+protocollo** → confronti solo mela-con-mela (stesso backend/versione); la generazione
+si gonfia con i rami spuri. *Osservato:* i conteggi si muovono con la profondità di
+cattura, l'AFD è più robusto — da preferire nel pre/post. *Codice:*
+`treestats_core.py`, `treestats.py` → `out/treestats.json`.
+
 ## 2. Struttura globale
 
 **Generazione (`gen`)** — Profondità topologica dalla trachea: gen 0 = trachea
@@ -292,6 +304,7 @@ della maschera. Rende ogni risultato riproducibile e auto-documentato. *Codice:*
 | `out/lung_metrics.json` | volume, MLD, LAA-950, Perc15, dysanapsis, ALR4 |
 | `out/pi10.json` | Pi10 (√WA a Pi=10), slope, R², n |
 | `out/tapering.json` | rapporto figlio/genitore, gradiente %/cm |
+| `out/treestats.json` | conteggi rami/terminali/gen, lunghezza, AFD |
 | `out/territories.json`, `out/murray.json`, `out/territory_index.json` | territori, fit di Murray, indice lobo |
 | `out/vessel_metrics.json`, `out/vascular_av.json` | TBV/BV5/BV10, A/V per lobo |
 | `out/pairing.json`, `out/discordance_regional.json` | BA ratio, discordanza regionale |
