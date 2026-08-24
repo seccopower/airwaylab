@@ -305,7 +305,10 @@ per-lobo rappresentano solo parte del polmone. *Codice:* `label_qc.py`.
 
 **Leak / connettività** — `radius_explosion` (ramo col diametro-maschera ≥ 1.6× il
 genitore, floor 4 mm, vie centrali escluse → leak in cisti/bolla/esofago, visibile
-anche senza lume) e isole (componenti staccati). *Limite dichiarato:* il leak
+anche senza lume) e isole (componenti staccati). **La severità scala con la
+dimensione** del ramo che si gonfia: ≥ 10 mm = alto (leak vero), ≥ 6 mm = medio, sotto
+= basso (informativo, non fa scattare l'allarme: a quel calibro è quasi sempre una
+biforcazione/rumore). *Limite dichiarato:* il leak
 extrapolmonare/esofageo NON è in v1 (serve un inviluppo delle vie aeree). Non
 penalizza i rami senza lume (possibili tappi). *Codice:* `leak_qc_core.py`,
 `leak_qc.py` → `out/leak_qc.json`.

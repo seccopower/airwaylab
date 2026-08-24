@@ -69,3 +69,23 @@ def test_summary_casoDAS_style_flagga():
     codes = {f['code'] for f in s['flags']}
     assert 'radius_explosion' in codes and 'islands' in codes
     assert s['metrics']['radius_explosion_worst']['id'] == 'b2'
+
+
+def test_severita_scala_con_la_dimensione():
+    # pallone grande -> alto, non-ok
+    big = leak_summary([{'id': 'b', 'gen': 8, 'd_mask': 15.0, 'parent_d': 4.0, 'ratio': 3.75}],
+                       n_components=1, largest_frac=1.0, leaked_ml=0.0)
+    assert big['flags'][0]['severity'] == 'alto' and not big['ok']
+    # calibro medio -> medio, non-ok
+    med = leak_summary([{'id': 'b', 'gen': 8, 'd_mask': 7.0, 'parent_d': 4.0, 'ratio': 1.75}],
+                       n_components=1, largest_frac=1.0, leaked_ml=0.0)
+    assert med['flags'][0]['severity'] == 'medio' and not med['ok']
+
+
+def test_piccolo_widening_e_basso_e_non_allarma():
+    # caso zanibon/reccold: ramo da ~4.8 mm appena sopra soglia -> basso, ok resta True
+    s = leak_summary([{'id': 'br121', 'gen': 8, 'd_mask': 4.8, 'parent_d': 2.7, 'ratio': 1.81}],
+                     n_components=1, largest_frac=1.0, leaked_ml=0.0)
+    assert s['flags'][0]['severity'] == 'basso'
+    assert s['ok'] is True                       # non fa scattare l'allarme
+    assert 'benigno' in s['flags'][0]['msg']

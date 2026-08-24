@@ -75,20 +75,41 @@ def connectivity_flag(n_components, largest_frac, leaked_ml,
                    f'(isole = falsi positivi staccati)'}
 
 
+# La severita' del radius-explosion scala con la DIMENSIONE del ramo che si gonfia:
+# un vero leak in cisti/bolla/esofago diventa un pallone (>= ~10 mm); un ramo appena
+# sopra soglia a 4-5 mm e' quasi sempre una biforcazione o rumore, non un leak. Cosi'
+# il QC resta silenzioso sui casi benigni e grida solo quando serve.
+BALLOON_MM = 10.0     # >= : leak vero (alto)
+MED_MM = 6.0          # >= : da verificare (medio); sotto = basso (informativo)
+
+
 def leak_summary(explosion, n_components, largest_frac, leaked_ml, total_ml=None, **kw):
     """Combina le due famiglie in un verdetto strutturato.
-    Ritorna {ok, flags:[{code,severity,msg}], metrics:{...}}."""
+    Ritorna {ok, flags:[{code,severity,msg}], metrics:{...}}. `ok` e' True se non ci
+    sono flag di severita' alta/media (i flag 'basso' restano informativi)."""
+    balloon = kw.get('balloon_mm', BALLOON_MM)
+    med = kw.get('med_mm', MED_MM)
     flags = []
     if explosion:
-        worst = explosion[0]
         n = len(explosion)
+        worst = max(explosion, key=lambda e: e['d_mask'])   # severita' = DIMENSIONE
+        d = worst['d_mask']
+        if d >= balloon:
+            sev = 'alto'
+            tail = ('probabile leak in cisti/bolla/esofago (visibile sulla maschera '
+                    'anche senza lume)')
+        elif d >= med:
+            sev = 'medio'
+            tail = 'possibile leak — verifica la maschera'
+        else:
+            sev = 'basso'
+            tail = ('a questo calibro spesso benigno (biforcazione/rumore); '
+                    'verifica solo se il quadro lo suggerisce')
         flags.append({
-            'code': 'radius_explosion', 'severity': 'alto',
+            'code': 'radius_explosion', 'severity': sev,
             'msg': f'{n} ram{"o" if n == 1 else "i"} piu\' larg{"o" if n == 1 else "hi"} '
                    f'del genitore (peggiore: {worst["id"]} gen{worst["gen"]} '
-                   f'{worst["d_mask"]}mm vs {worst["parent_d"]}mm, ×{worst["ratio"]}): '
-                   f'probabile leak in cisti/bolla/esofago (visibile sulla maschera '
-                   f'anche senza lume)'})
+                   f'{worst["d_mask"]}mm vs {worst["parent_d"]}mm, ×{worst["ratio"]}): {tail}'})
     cf = connectivity_flag(n_components, largest_frac, leaked_ml,
                            frac_lo=kw.get('frac_lo', 0.97),
                            leaked_floor_ml=kw.get('leaked_floor_ml', 0.5))
@@ -96,10 +117,11 @@ def leak_summary(explosion, n_components, largest_frac, leaked_ml, total_ml=None
         flags.append(cf)
     metrics = {
         'n_radius_explosion': len(explosion),
-        'radius_explosion_worst': explosion[0] if explosion else None,
+        'radius_explosion_worst': max(explosion, key=lambda e: e['d_mask']) if explosion else None,
         'n_components': n_components,
         'largest_component_frac': round(largest_frac, 4),
         'leaked_islands_ml': round(leaked_ml, 2),
         'airway_total_ml': round(total_ml, 2) if total_ml is not None else None,
     }
-    return {'ok': len(flags) == 0, 'flags': flags, 'metrics': metrics}
+    ok = not any(f['severity'] in ('alto', 'medio') for f in flags)
+    return {'ok': ok, 'flags': flags, 'metrics': metrics}
