@@ -196,6 +196,7 @@ def cmd_run(args):
 
 
 EXPLORATORY_STEPS = [
+    ("summary_page.py", "quantitative summary tab (Pi10, tapering, AFD, parenchyma, pruning)"),
     ("leak_qc.py", "airway-mask leak / connectivity QC (exploratory)"),
     ("flow.py", "1D airflow model (exploratory)"),
     ("morphomap.py", "multi-axis structural map (exploratory)"),

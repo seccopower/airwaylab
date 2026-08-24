@@ -21,6 +21,7 @@ TOKEN = '@@AIRWAYLAB_PLOTLY@@'
 # (titolo, file, nota) — inclusa solo se il file esiste
 TABS = [
     ('Mappa quantitativa', 'out/report_main.html'),
+    ('Sintesi quantitativa', 'out/summary.html'),
     ('Discordanza aereo-vascolare', 'out/dual_viz.html'),
     ('Mappa strutturale multi-asse', 'out/morphomap.html'),
     ('Incertezza (ensemble)', 'out/uncertainty.html'),
