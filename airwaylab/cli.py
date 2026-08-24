@@ -30,6 +30,7 @@ TAIL_STEPS = [
     ("parenchyma.py", "parenchyma beyond mean density (heterogeneity, LAA clusters)"),
     ("territory.py", "parenchymal territories + Murray fit"),
     ("vessels.py", "vascular tree: TBV, BV5"),
+    ("vascular_gradient.py", "vascular pruning gradient (small-vessel density vs pleura)"),
     ("vtree.py", "vascular graph"),
     ("pair.py", "bronchus-artery pairing (BA ratio)"),
     ("dual.py", "airway-vascular mismatch map"),

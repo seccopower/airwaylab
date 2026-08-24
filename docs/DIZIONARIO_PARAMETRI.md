@@ -215,6 +215,17 @@ di **pruning** periferico, via apertura morfologica `BV5 = TBV − opened_volume
 assoluto non confrontabile, dipende da kernel/dose → solo confronti mela-con-mela.
 *Codice:* `vessels.py`, nucleo `av_core.py` (`bvn_volumes`, `radius_for_csa`).
 
+**Gradiente di pruning vascolare** — *Cos'è:* la perdita centro→periferia dei piccoli
+vasi (pruning del piccolo circolo), localizzata invece che riassunta da BV5 globale.
+*Come:* distanza dalla pleura dal campo EDT della maschera polmonare (griglia ×3);
+piccoli vasi = sezione < 5 mm² (apertura `r5`, fedele a BV5 di `vessels.py`); per
+gusci di distanza si calcola la **densità di piccoli vasi** (ml piccoli / ml polmone)
+e la frazione BV5; si aggregano **periferia** (dist ≤ 15 mm) vs **centro**.
+`pruning_ratio` = densità periferica / centrale (< 1 = pruning periferico); più la
+pendenza densità–distanza. *Limiti:* dipende da soglia vasi / kernel / volume e
+dall'approssimazione ×3 del campo di distanza → mela-con-mela. *Codice:*
+`vascular_gradient_core.py`, `vascular_gradient.py` → `out/vascular_gradient.json`.
+
 **A/V per lobo (`art_ml`, `vein_ml`, `av_ratio`)** — Volumi arterioso/venoso per lobo
 dalle maschere separate di TotalSegmentator; `av_ratio = art_ml / vein_ml`. *Codice:*
 `vasculature.py`, `av_core.py` (`av_ratio`, `aggregate_by_lobe`) →
@@ -319,6 +330,7 @@ della maschera. Rende ogni risultato riproducibile e auto-documentato. *Codice:*
 | `out/treestats.json` | conteggi rami/terminali/gen, lunghezza, AFD |
 | `out/territories.json`, `out/murray.json`, `out/territory_index.json` | territori, fit di Murray, indice lobo |
 | `out/vessel_metrics.json`, `out/vascular_av.json` | TBV/BV5/BV10, A/V per lobo |
+| `out/vascular_gradient.json` | pruning: densità periferica/centrale, ratio, gradiente |
 | `out/pairing.json`, `out/discordance_regional.json` | BA ratio, discordanza regionale |
 | `out/plugs.json` | candidati mucus plug |
 | `out/morphomap.json`, `out/flow.json`, `out/uncertainty.json` | esplorativi (+ `plausibilita_lobare`, `labeling` in morphomap.json) |
