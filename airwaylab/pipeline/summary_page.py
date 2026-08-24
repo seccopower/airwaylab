@@ -18,6 +18,16 @@ def _load(name):
     return None
 
 
+def _load_bodycomp():
+    p = os.environ.get('AIRWAYLAB_BODYCOMP') or os.path.join('out', 'bodycomp.json')
+    if p and os.path.exists(p):
+        try:
+            return json.load(open(p))
+        except (ValueError, OSError):
+            return None
+    return None
+
+
 pi10 = _load('pi10.json') or {}
 tap = _load('tapering.json') or {}
 tree = _load('treestats.json') or {}
@@ -25,6 +35,7 @@ par = _load('parenchyma.json') or {}
 vg = _load('vascular_gradient.json') or {}
 lm = _load('lung_metrics.json') or {}
 vm = _load('vessel_metrics.json') or {}
+bc = _load_bodycomp() or {}
 
 name = os.environ.get('AIRWAYLAB_CASE', 'caso')
 
@@ -33,13 +44,13 @@ def _esc(s):
     return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
-def tile(label, value, unit='', note='', hero=False):
+def tile(label, value, unit='', note='', hero=False, warn=False):
     """Un riquadro-metrica; ritorna '' se il valore e' None."""
     if value is None:
         return ''
     u = f'<span class="u">{_esc(unit)}</span>' if unit else ''
     n = f'<div class="n">{_esc(note)}</div>' if note else ''
-    cls = 'tile hero' if hero else 'tile'
+    cls = 'tile hero' if hero else ('tile warn' if warn else 'tile')
     return (f'<div class="{cls}"><div class="k">{_esc(label)}</div>'
             f'<div class="v">{_esc(value)}{u}</div>{n}</div>')
 
@@ -104,7 +115,24 @@ vessels = section(
              'densita piccoli vasi vs distanza dalla pleura'),
     ])
 
-cards = ''.join([airways, parench, vessels]) or '<p class="note">Nessun descrittore disponibile.</p>'
+# --- Biomarcatori opportunistici (opt-in) ---
+bone = bc.get('bone', {})
+mus = bc.get('muscle', {})
+fat = bc.get('fat', {})
+opportun = section(
+    'Biomarcatori opportunistici — stesso torace',
+    'Opt-in, dalle maschere di composizione corporea. Screening, non diagnosi.',
+    [
+        tile('Osso — HU vertebrale', bone.get('mean_hu'), ' HU',
+             f"min {bone.get('min_hu')} · n {bone.get('n')} · screening, non diagnostico",
+             warn=bool(bone.get('low_flag'))),
+        tile('Muscolo', mus.get('muscle_ml'), ' ml',
+             f"HU {mus.get('muscle_hu')} (bassa = miosteatosi)"),
+        tile('Grasso VAT/SAT', fat.get('vat_sat_ratio'), '',
+             f"SAT {fat.get('sat_ml')} · VAT {fat.get('vat_ml')} ml"),
+    ])
+
+cards = ''.join([airways, parench, vessels, opportun]) or '<p class="note">Nessun descrittore disponibile.</p>'
 
 html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -112,10 +140,11 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <style>
   .viz-root {{ color-scheme: light dark; --surface-1:#fcfcfb; --page:#f9f9f7;
     --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
-    --border:rgba(11,11,11,.10); --accent:#0c6f79; }}
+    --border:rgba(11,11,11,.10); --accent:#0c6f79; --warn:#a86a12; }}
   @media (prefers-color-scheme: dark) {{ .viz-root {{
     --surface-1:#161a1a; --page:#0d0d0d; --text-primary:#fff;
-    --text-secondary:#c3c2b7; --muted:#898781; --border:rgba(255,255,255,.12); --accent:#3bb4c0; }} }}
+    --text-secondary:#c3c2b7; --muted:#898781; --border:rgba(255,255,255,.12);
+    --accent:#3bb4c0; --warn:#d69a3e; }} }}
   * {{ box-sizing:border-box }} body {{ margin:0 }}
   .viz-root {{ font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
     background:var(--page); color:var(--text-primary); min-height:100vh; padding:22px }}
@@ -129,6 +158,7 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
   .tiles {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:11px }}
   .tile {{ background:var(--page); border:1px solid var(--border); border-radius:10px; padding:11px 13px }}
   .tile.hero {{ border-color:var(--accent) }}
+  .tile.warn {{ border-color:var(--warn) }} .tile.warn .v {{ color:var(--warn) }}
   .tile .k {{ font-size:11px; color:var(--text-secondary); margin-bottom:4px }}
   .tile .v {{ font-size:22px; font-weight:680; font-variant-numeric:tabular-nums }}
   .tile.hero .v {{ color:var(--accent) }}
