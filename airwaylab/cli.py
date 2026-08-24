@@ -23,6 +23,7 @@ ASSETS = os.path.join(PKG, "assets")
 TAIL_STEPS = [
     ("snapshots.py", "per-branch verification sections"),
     ("profile.py", "longitudinal caliber/wall profiles"),
+    ("pi10.py", "Pi10 wall-remodeling metric (√WA at Pi=10)"),
     ("lung.py", "lungs, densitometry, dysanapsis"),
     ("territory.py", "parenchymal territories + Murray fit"),
     ("vessels.py", "vascular tree: TBV, BV5"),
