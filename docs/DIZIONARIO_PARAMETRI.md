@@ -94,6 +94,16 @@ da quali vie sono misurabili (protocollo/inspirazione) e dall'approssimazione
 circolare del perimetro; serve n ≥ 10; confronti solo a parità di protocollo.
 *Codice:* `pi10_core.py`, `pi10.py` → `out/pi10.json`.
 
+**Tapering (`taper_ratio_med`, `taper_rate_pct_per_cm`)** — *Cos'è:* la rastremazione
+del calibro verso la periferia; la sua perdita è il segno delle bronchiectasie.
+*Come:* (1) **rapporto figlio/genitore** del lume a ogni biforcazione tra rami `ok`
+→ mediana e `frac_no_taper` (frazione con ratio > 0.9); (2) **gradiente globale**: fit
+`ln(d_mean) = a + b·L` sulla distanza cumulativa dalla carena → `rate = (1 − e^{b·10})·100`
+= % di riduzione del calibro per cm. *Significato:* sano ratio ~0.79 (Murray
+`2^(−1/3)`); ratio → 1 o rate → 0 = tapering perso. *Limiti:* dipende dai rami
+misurabili; riferimenti da stabilire sulla coorte a parità di protocollo. *Codice:*
+`tapering_core.py`, `tapering.py` → `out/tapering.json`.
+
 **BA ratio (`ba`)** — Rapporto `diametro lume bronco / diametro arteria satellite`,
 su coppie vicine, parallele (`|cos| > 0.6`) e di calibro plausibile; mediana per
 generazione e globale. *Significato:* BA > 1 = bronco dilatato (bronchiectasia).
@@ -281,6 +291,7 @@ della maschera. Rende ogni risultato riproducibile e auto-documentato. *Codice:*
 | `out/seg_info.json` | iso, spacing nativo, backend, versione, provenienza |
 | `out/lung_metrics.json` | volume, MLD, LAA-950, Perc15, dysanapsis, ALR4 |
 | `out/pi10.json` | Pi10 (√WA a Pi=10), slope, R², n |
+| `out/tapering.json` | rapporto figlio/genitore, gradiente %/cm |
 | `out/territories.json`, `out/murray.json`, `out/territory_index.json` | territori, fit di Murray, indice lobo |
 | `out/vessel_metrics.json`, `out/vascular_av.json` | TBV/BV5/BV10, A/V per lobo |
 | `out/pairing.json`, `out/discordance_regional.json` | BA ratio, discordanza regionale |
