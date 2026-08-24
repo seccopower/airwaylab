@@ -316,6 +316,27 @@ della maschera. Rende ogni risultato riproducibile e auto-documentato. *Codice:*
 
 ---
 
+## 8. Biomarcatori opportunistici (opt-in, stesso torace)
+
+Dallo stesso esame, *se* sono presenti le maschere di composizione corporea (task
+`total`/`tissue_types` di TotalSegmentator, prodotte a parte). Meccanica opt-in come
+il ponte AeroPath — non appesantisce il comando unico. Strumento: `tools/bodycomp.py`.
+
+**Osso (`bone`)** — attenuazione trabecolare media per corpo vertebrale (HU, con lieve
+erosione per togliere il corticale); media, minimo e un **flag esplorativo** (minimo
+< ~110 HU). *Significato:* screening osteoporosi opportunistico — rilevante negli
+asmatici sotto steroide. *Limiti:* **non diagnostico**; dipende da livello vertebrale,
+kernel, kV. *Codice:* `bodycomp_core.py`, `tools/bodycomp.py`.
+
+**Muscolo (`muscle`)** — volume del muscolo scheletrico (ml) e attenuazione media (HU
+bassa = infiltrazione adiposa / miosteatosi). *Significato:* surrogato di sarcopenia.
+
+**Grasso (`fat`)** — volume sottocutaneo (SAT) e viscerale/tronco (VAT), con rapporto
+VAT/SAT.
+
+*Limiti comuni:* valori dipendenti da kernel/dose/kV e campo di vista → confronti solo
+a parità di protocollo. Screening, non diagnosi. Output: `bodycomp.json`.
+
 ## Dove vivono i valori
 
 | File | Contenuto |
@@ -336,6 +357,7 @@ della maschera. Rende ogni risultato riproducibile e auto-documentato. *Codice:*
 | `out/morphomap.json`, `out/flow.json`, `out/uncertainty.json` | esplorativi (+ `plausibilita_lobare`, `labeling` in morphomap.json) |
 | `out/leak_qc.json` | leak/connettività |
 | `<caso>_seg/backend_info.json` | provenienza segmentazione |
+| `bodycomp.json` (opt-in) | osso (HU vertebrale), muscolo (ml/HU), grasso (SAT/VAT) |
 
 ---
 
