@@ -73,11 +73,21 @@ def section(title, note, tiles):
 
 # --- Vie aeree ---
 hg = par.get('histogram', {})
+# nota Pi10: n, R², CI bootstrap e — se 10 mm cade fuori dai perimetri osservati —
+# l'avviso di estrapolazione (in quel caso la tile diventa 'warn', non 'hero').
+_ci = pi10.get('ci95') or {}
+_ci_txt = (f" · CI95 {_ci['ci_lo']}–{_ci['ci_hi']}"
+           if _ci.get('ci_lo') is not None else '')
+_pi10_extrap = bool(pi10.get('extrapolation'))
+_pi10_note = f"√WA a Pi=10 · n={pi10.get('n')} · R²={pi10.get('r2')}{_ci_txt}"
+if _pi10_extrap:
+    _pi10_note += ' · estrapolato oltre i perimetri osservati (cautela)'
 airways = section(
     'Vie aeree — rimodellamento e struttura',
     'Descrittori per soggetto. Confrontabili solo a parita di protocollo.',
     [
-        tile('Pi10', pi10.get('pi10'), ' mm', f"√WA a Pi=10 · n={pi10.get('n')} · R²={pi10.get('r2')}", hero=True),
+        tile('Pi10', pi10.get('pi10'), ' mm', _pi10_note,
+             hero=not _pi10_extrap, warn=_pi10_extrap),
         tile('Tapering (figlio/genitore)', tap.get('taper_ratio_med'), '',
              'sano ~0.79; →1 = rastremazione persa'),
         tile('Gradiente calibro', tap.get('taper_rate_pct_per_cm'), ' %/cm',

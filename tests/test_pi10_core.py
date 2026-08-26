@@ -5,7 +5,14 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "airwaylab", "pipeline"))
 
-from pi10_core import airway_points, pi10_fit, wall_point   # noqa: E402
+from pi10_core import (   # noqa: E402
+    airway_points,
+    pi10_bootstrap,
+    pi10_fit,
+    pi10_loo,
+    pi10_summary,
+    wall_point,
+)
 
 
 def test_wall_point_geometria():
@@ -46,3 +53,59 @@ def test_pi10_end_to_end_da_branches():
           for k in range(12)]
     r = pi10_fit(airway_points(br))
     assert r['pi10'] is not None and r['n'] == 12
+
+
+# --- diagnostica -----------------------------------------------------------
+
+def test_range_e_interpolazione():
+    # Pi da 2 a 19: 10 mm e' DENTRO -> non estrapolazione
+    pts = [(pi, 0.5 + 0.3 * pi) for pi in range(2, 20)]
+    r = pi10_fit(pts)
+    assert r['pi_min'] == 2.0 and r['pi_max'] == 19.0
+    assert r['extrapolation'] is False
+
+
+def test_estrapolazione_quando_target_fuori_range():
+    # tutti i perimetri < 10 mm -> Pi10 a 10 e' un'estrapolazione (ma calcolabile)
+    pts = [(2.0 + 0.5 * k, 0.5 + 0.3 * (2.0 + 0.5 * k)) for k in range(15)]  # Pi 2..9
+    r = pi10_fit(pts)
+    assert r['pi_max'] < 10.0
+    assert r['extrapolation'] is True
+    assert r['pi10'] is not None                    # estrapolato, non None
+    assert r['n_below_target'] == r['n']            # tutti sotto i 10 mm
+
+
+def test_bootstrap_deterministico_e_stretto_su_retta_esatta():
+    pts = [(pi, 0.5 + 0.3 * pi) for pi in range(2, 20)]
+    a = pi10_bootstrap(pts)
+    b = pi10_bootstrap(pts)
+    assert a == b                                   # stesso seed -> stessa CI
+    # su una retta esatta ogni ricampionamento da' la stessa retta -> CI degenere a 3.5
+    assert abs(a['ci_lo'] - 3.5) < 1e-6 and abs(a['ci_hi'] - 3.5) < 1e-6
+
+
+def test_bootstrap_none_se_pochi():
+    assert pi10_bootstrap([(3.0, 1.0), (4.0, 1.2)])['ci_lo'] is None
+
+
+def test_loo_zero_su_retta_esatta():
+    # togliendo un punto da una retta perfetta Pi10 non si muove
+    pts = [(pi, 0.5 + 0.3 * pi) for pi in range(2, 20)]
+    loo = pi10_loo(pts)
+    assert abs(loo['loo_delta_max']) < 1e-6
+
+
+def test_loo_intercetta_il_ramo_influente():
+    # un outlier lontano sposta Pi10 quando lo si toglie -> delta non banale
+    pts = [(pi, 0.5 + 0.3 * pi) for pi in range(2, 20)]
+    pts.append((30.0, 50.0))                        # outlier ad alto leverage
+    loo = pi10_loo(pts)
+    assert abs(loo['loo_delta_max']) > 0.1
+
+
+def test_summary_ha_i_sottoblocchi():
+    pts = [(pi, 0.5 + 0.3 * pi) for pi in range(2, 20)]
+    s = pi10_summary(pts)
+    assert 'ci95' in s and 'loo' in s
+    assert s['pi10'] is not None
+    assert s['ci95']['n_boot'] > 0
