@@ -8,6 +8,12 @@ I file sono in `airwaylab/pipeline/` salvo diversa indicazione.
 > `qc == 'ok'` (regola a due regimi). Sugli altri è `null`, con il grezzo nelle
 > colonne `*_raw_nonreportable`.
 
+> **Stato dei descrittori:** i descrittori aggiunti nel 2026-08 (Pi10, tapering,
+> AFD, parenchima, gradiente di pruning, composizione corporea) sono **esplorativi,
+> non endpoint validati**. Ogni JSON lo dichiara (`status: exploratory` + blocco
+> `provenance`). I limiti metodologici profondi e le condizioni minime prima di un
+> methods paper sono raccolti in `docs/VALIDATION_BACKLOG.md`, sezione E.
+
 ---
 
 ## 0. Fondamenta (rendono leggibile tutto il resto)

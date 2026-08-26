@@ -90,3 +90,80 @@ as validated. Convert each item to an issue as it is picked up.
 
 18. **Per-endpoint limits section** *(in progress)* — reorganize the limits by
     endpoint, with expected bias direction and failure conditions.
+
+## E. New quantitative descriptors (added 2026-08 — all exploratory)
+
+Following an adversarial code audit, a group of per-subject descriptors was
+added (Pi10, tapering, tree morphometry/AFD, parenchyma, vascular pruning
+gradient, opportunistic body composition). They are **exploratory descriptors,
+not validated endpoints**. The audit's verdict — "recoverable as an exploratory
+platform" — sets the bar for this section: none of these may be described as a
+biological endpoint or a validated measure until the corresponding item is
+closed. Provenance and framing are already shipped; the metrological work is
+open.
+
+19. **Exploratory status + provenance on every descriptor** *(addressed)* —
+    each descriptor JSON stamps `status='exploratory'`, `method_id`, parameters,
+    denominators and exclusions, plus backend and tool version (`provenance.py`);
+    the summary page opens with an exploratory banner and a provenance footer.
+    The report no longer presents these numbers without their caveats.
+
+20. **Pi10 metrological validation** *(open; diagnostics addressed)* —
+    `Pi10_AirwayLab` is our implementation of the Nakano regression, renamed to
+    stop implying identity with the published, validated Pi10. Shipped
+    diagnostics: observed perimeter range, an explicit **extrapolation flag**
+    when 10 mm falls outside that range, target coverage, a deterministic
+    bootstrap 95% CI and leave-one-out sensitivity. Still open: circular-
+    perimeter bias; half-max wall overestimation on small airways; agreement
+    against a reference Pi10 pipeline. Ties to phantom item #4.
+
+21. **Tapering estimand** *(open)* — the child/parent ratio is computed on
+    **topological parent-child adjacency** (mono-child chains included, not only
+    true bifurcations); the gradient uses cumulative length **from the root** to
+    the branch midpoint. The 0.79 (`2^(-1/3)`) and 0.9 values are a theoretical
+    reference and an operating threshold, **not** clinical normality cut-offs;
+    cohort references and sensitivity to spurious branches are open.
+
+22. **Counts / AFD** *(open; denominators addressed)* — counts include **all
+    graph branches** (no-lumen / sub-resolution included); `n_branches_grafo` and
+    `n_branches_qc_ok` are now exported separately so the count is not read as
+    "visible airways". `afd_3d_fixedgrid` uses a single grid origin and few
+    scales — it is **not** the multi-position FracLac standard; grid-origin /
+    scale sensitivity and agreement against the standard are required before any
+    AFD claim.
+
+23. **Parenchyma estimand** *(open)* — MLD / LAA-950 / Perc15 / heterogeneity /
+    cluster-D are computed on the **aerated component** (air threshold of
+    `lung.py`), **not** the anatomical lung: dense consolidation / effusion /
+    atelectasis are excluded by construction. Declare this estimand in the
+    protocol. Heterogeneity is regional density SD, **not** validated mosaic /
+    air-trapping (needs the expiratory scan). Cluster-D uses OLS rank-size, not
+    MLE/x_min; the ×3 subsample alters cluster topology; not enfisema-specific
+    (Gupta found no asthma difference).
+
+24. **Vascular pruning proxy** *(open)* — "small structures" = morphological
+    **opening residual at r ≈ 1.26 mm** on a dense-structure candidate-vessel
+    mask; this is a proxy, **not** the scale-space BV5 (Estépar) and **not** the
+    orthogonal vessel calibre. Non-contrast CT does not isolate vessels. The ×3
+    distance field aliases; `pruning_ratio` is exploratory. Validate against a
+    real BV5 pipeline and a contrast reference before any pruning claim.
+
+25. **Body-composition ROIs** *(open)* — bone: whole-vertebra ROI eroded by
+    2 vox at **mixed thoracic levels**, not the Pickhardt trabecular ROI; the
+    ~110 HU threshold is not validated for this ROI, so the automatic low-bone
+    flag is **retired** (value kept, alarm removed). Muscle: not the L3
+    single-slice / EWGSOP2 index → not "sarcopenia". Fat: TotalSegmentator
+    `torso_fat` is not segmented VAT → reported as `internal_fat_ml`, not
+    `vat_ml`. Each needs the standard ROI / definition before any clinical read.
+
+26. **Minimum conditions before a methods paper** *(open — consolidates the
+    audit's checklist)* — (a) prespecify primary endpoints (caliber; lung
+    volume) and label every descriptor above exploratory; (b) for each
+    descriptor, state estimand, denominators and exclusions (provenance shipped,
+    protocol text open); (c) validate Pi10 / AFD / BV5 against their published
+    definitions **or** keep the `_AirwayLab` / proxy naming (naming done,
+    validation open); (d) protocol-invariance tests across spacing / orientation
+    / kernel (ties #13); (e) source + sensitivity sweep for every heuristic
+    threshold (ties #12); (f) reference-standard study for anything claimed
+    diagnostic (ties #11); (g) reproducible environment + per-endpoint
+    regression tests (ties #15, #16).
