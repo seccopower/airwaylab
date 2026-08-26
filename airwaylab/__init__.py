@@ -8,4 +8,4 @@ an interactive single-file HTML report.
 Research software. Not a medical device. Not for clinical decision-making.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.1.0 — exploratory descriptors + audit-driven honesty hardening
+
+Additive on the 1.0.0 baseline (no breaking changes to the caliber/wall
+endpoints). Two threads: more descriptors extracted from a single CT, and an
+adversarial code audit that made sure every one of them says only what the
+method measures.
+
+- **New per-subject descriptors** (all exploratory), each with a pure tested
+  core: **Pi10_AirwayLab** (√WA at a fixed 10 mm perimeter), **tapering**
+  (child/parent ratio + log-diameter gradient), **tree morphometry** (counts +
+  `afd_3d_fixedgrid`), **parenchyma beyond mean density** (histogram shape,
+  regional heterogeneity, LAA-cluster D), **vascular pruning gradient**
+  (small-structure density vs distance to pleura), and opt-in **opportunistic
+  body composition** (vertebral HU, muscle, fat). Surfaced in a new
+  **"Sintesi quantitativa"** report tab.
+- **Provenance on every descriptor** — each JSON stamps `status='exploratory'`,
+  `method_id`, parameters, denominators, exclusions, backend and tool version
+  (`provenance.py`); the summary tab opens with an exploratory banner and a
+  provenance footer, so the report never presents a number without its caveats.
+- **Pi10 diagnostics** — observed perimeter range, an explicit extrapolation
+  flag when 10 mm falls outside it, coverage, a deterministic bootstrap 95% CI
+  and leave-one-out sensitivity; the tile turns amber when extrapolated.
+- **Honest relabels** — labels reworded to match the method: `Pi10_AirwayLab`
+  (not "normalizes WA%"), `afd_3d_fixedgrid` (not FracLac), opening-residual
+  proxy (not scale-space BV5), dense-structure mask (not pure vessel), aerated
+  component (not anatomical lung); body-composition bone flag retired,
+  `torso_fat` reported as `internal_fat` (not VAT), no "sarcopenia" claim.
+- **Known-limitations section** — `docs/VALIDATION_BACKLOG.md` section E gathers
+  the deep methodological limits of the new descriptors and the minimum
+  conditions before a methods paper.
+- **166 unit tests** (from 122).
+
+External dependency unchanged: TotalSegmentator (tested with v2.18.0).
+
 ## 1.0.0 — baseline release (frozen reference)
 
 First stable, citable baseline: the reference every future change builds on.

@@ -1,6 +1,6 @@
 # AirwayLab — Dizionario dei parametri
 
-Riferimento completo dei parametri del report, allineato a **v1.0.0**. Ogni voce:
+Riferimento completo dei parametri del report, allineato a **v1.1.0**. Ogni voce:
 *cos'è · come si calcola (dal codice) · cosa significa · limiti · file sorgente*.
 I file sono in `airwaylab/pipeline/` salvo diversa indicazione.
 
@@ -399,5 +399,5 @@ a parità di protocollo. Screening, non diagnosi. Output: `bodycomp.json`.
 
 ---
 
-*Documento allineato ad AirwayLab v1.0.0. I riferimenti ai file puntano a
+*Documento allineato ad AirwayLab v1.1.0. I riferimenti ai file puntano a
 `airwaylab/pipeline/`. Aggiornare a ogni cambio di formula o soglia.*
