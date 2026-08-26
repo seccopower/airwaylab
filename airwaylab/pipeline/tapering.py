@@ -7,7 +7,13 @@ dalla carena. Scrive out/tapering.json. Gira nel work dir dopo measure.py.
 import json
 import os
 
-from tapering_core import tapering_summary
+from provenance import provenance
+from tapering_core import (
+    MIN_PAIRS,
+    MIN_POINTS,
+    NO_TAPER_RATIO,
+    tapering_summary,
+)
 
 TREE = 'out/tree_measured.json'
 
@@ -52,6 +58,21 @@ for b in branches:
 
 res = tapering_summary(ratios, points)
 res['schema_version'] = 1
+res['status'] = 'exploratory'
+
+n_tot = len(branches)
+n_ok = sum(1 for b in branches if ok(b))
+res['provenance'] = provenance(
+    'tapering_ratio_gradient',
+    params={'no_taper_ratio': NO_TAPER_RATIO, 'min_pairs': MIN_PAIRS,
+            'min_points': MIN_POINTS,
+            'rapporto': 'd_figlio/d_genitore su adiacenza topologica padre-figlio',
+            'gradiente': 'ln(d)=a+b*L, L = distanza cumulativa dalla radice al '
+                         'punto medio del ramo'},
+    denominators={'n_branches_totali': n_tot, 'n_qc_ok': n_ok,
+                  'n_coppie_rapporto': res.get('n_pairs'),
+                  'n_punti_gradiente': res.get('n')},
+    exclusions={'qc_non_ok_o_senza_calibro': n_tot - n_ok})
 json.dump(res, open('out/tapering.json', 'w'), indent=1)
 
 rm = res.get('taper_ratio_med')

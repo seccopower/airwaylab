@@ -16,6 +16,7 @@ import SimpleITK as sitk
 from scipy import ndimage
 
 from parenchyma_core import cluster_size_stats, heterogeneity, histogram_shape
+from provenance import provenance
 
 CT = 'out/ct_iso.nii.gz'
 LUNG = 'out/lung_mask_ds.nii.gz'
@@ -60,8 +61,26 @@ sizes[0] = 0
 sizes = sizes[sizes > 0]
 clu = cluster_size_stats(sizes.tolist(), total_laa=float(sizes.sum()) if sizes.size else 0.0)
 
-res = {'schema_version': 1, 'grid': 'ds x3', 'laa_threshold_hu': LAA_HU,
+res = {'schema_version': 1, 'status': 'exploratory', 'grid': 'ds x3',
+       'laa_threshold_hu': LAA_HU,
        'histogram': hist, 'heterogeneity': het, 'laa_clusters': clu}
+
+# la "maschera polmonare" e' la COMPONENTE AERATA (HU<-500 di lung.py), NON il
+# polmone anatomico: consolidamenti/versamenti/atelettasie densi ne restano fuori.
+# Denominatori e caveat lo dicono esplicitamente cosi' MLD/LAA/Perc15 non vengano
+# letti come densita' del polmone intero.
+res['provenance'] = provenance(
+    'parenchyma_descriptors',
+    params={'roi': 'componente aerata (soglia aria di lung.py), non polmone anatomico',
+            'laa_threshold_hu': LAA_HU, 'grid': 'sottocampionamento x3',
+            'blocco_eterogeneita_mm': 15.0,
+            'cluster_D': 'OLS rango-dimensione sui cluster LAA (non MLE/xmin)'},
+    denominators={'n_voxel_aerati': int(hu.size),
+                  'n_blocchi_eterogeneita': het.get('n_blocks'),
+                  'n_cluster_laa': clu.get('n_clusters')},
+    exclusions={'roi_esclude': 'tessuto non aerato (consolidamento/versamento) '
+                               'sotto la soglia aria',
+                'grid_x3': 'il sottocampionamento altera la topologia dei cluster'})
 json.dump(res, open('out/parenchyma.json', 'w'), indent=1)
 
 print('Parenchima (oltre la densita\' media):')

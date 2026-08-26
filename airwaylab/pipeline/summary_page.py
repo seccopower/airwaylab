@@ -39,6 +39,14 @@ bc = _load_bodycomp() or {}
 
 name = os.environ.get('AIRWAYLAB_CASE', 'caso')
 
+# provenienza: la prendo dal primo descrittore che ce l'ha (tutti timbrano lo stesso
+# blocco). Serve al footer per dichiarare backend + versione sotto ai numeri.
+prov = {}
+for _d in (pi10, tap, tree, par, vg):
+    if isinstance(_d, dict) and _d.get('provenance'):
+        prov = _d['provenance']
+        break
+
 
 def _esc(s):
     return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -134,6 +142,27 @@ opportun = section(
 
 cards = ''.join([airways, parench, vessels, opportun]) or '<p class="note">Nessun descrittore disponibile.</p>'
 
+# --- banner esplorativo (il caveat che il report NON deve cancellare) ---
+banner = (
+    '<div class="banner"><strong>Descrittori esplorativi, non endpoint validati.</strong> '
+    'Ogni riquadro è una misura per soggetto con i suoi limiti (definizione, denominatori '
+    'ed esclusioni nel dizionario dei parametri). Non sono biomarcatori clinici validati: '
+    'servono per confronti <em>a parità di protocollo</em> — tipicamente pre/post dello '
+    'stesso paziente, stesso backend e stessa versione — non come valori assoluti né come '
+    'diagnosi.</div>')
+
+# --- footer di provenienza: sotto ai numeri, da dove vengono ---
+_bits = []
+if prov.get('backend'):
+    _bits.append(f"backend {_esc(prov['backend'])}")
+if prov.get('airwaylab_version'):
+    _bits.append(f"AirwayLab v{_esc(prov['airwaylab_version'])}")
+if prov.get('iso_mm'):
+    _bits.append(f"ricostruzione {_esc(prov['iso_mm'])} mm iso")
+foot = (f'<p class="foot">Provenienza: {" · ".join(_bits)}. '
+        f'Stato: esplorativo.</p>' if _bits
+        else '<p class="foot">Provenienza non disponibile (seg_info assente).</p>')
+
 html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(name)} — sintesi quantitativa</title>
@@ -155,6 +184,13 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
     padding:16px 18px; margin-bottom:14px }}
   .card h2 {{ font-size:13px; font-weight:600; margin:0 0 2px; letter-spacing:.01em }}
   .note {{ font-size:11.5px; color:var(--muted); margin:0 0 12px }}
+  .banner {{ background:color-mix(in srgb, var(--warn) 12%, var(--surface-1));
+    border:1px solid var(--warn); border-left-width:3px; border-radius:10px;
+    padding:11px 14px; margin:0 0 16px; font-size:12px; line-height:1.5;
+    color:var(--text-secondary) }}
+  .banner strong {{ color:var(--warn) }}
+  .foot {{ font-size:11px; color:var(--muted); margin:16px 2px 0;
+    border-top:1px solid var(--border); padding-top:10px }}
   .tiles {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:11px }}
   .tile {{ background:var(--page); border:1px solid var(--border); border-radius:10px; padding:11px 13px }}
   .tile.hero {{ border-color:var(--accent) }}
@@ -167,7 +203,9 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 </style></head><body><div class="viz-root"><div class="wrap">
 <h1>Sintesi quantitativa · {_esc(name)}</h1>
 <p class="sub">Descrittori numerici del report. Ogni valore è misurato e ha i suoi limiti (vedi dizionario). Confronti solo a parità di protocollo.</p>
+{banner}
 {cards}
+{foot}
 </div></div></body></html>"""
 
 open('out/summary.html', 'w', encoding='utf-8').write(html)

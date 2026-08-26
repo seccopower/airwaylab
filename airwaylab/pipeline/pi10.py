@@ -7,7 +7,8 @@ Gira nel work dir dopo measure.py.
 import json
 import os
 
-from pi10_core import airway_points, pi10_fit
+from pi10_core import MIN_AIRWAYS, airway_points, pi10_fit
+from provenance import provenance
 
 TREE = 'out/tree_measured.json'
 
@@ -20,6 +21,19 @@ pts = airway_points(branches)
 res = pi10_fit(pts)
 res['schema_version'] = 1
 res['unit'] = 'mm (sqrt area di parete a Pi=10 mm)'
+res['status'] = 'exploratory'
+
+# quante vie aeree entrano nella regressione e quante restano fuori (e perche')
+n_tot = len(branches)
+n_qc_ok = sum(1 for b in branches if b.get('qc') == 'ok')
+res['provenance'] = provenance(
+    'pi10_airwaylab',
+    params={'target_pi_mm': 10.0, 'min_airways': MIN_AIRWAYS,
+            'wall': 'FWHM half-max', 'perimeter': 'approssimazione circolare (Pi=pi*d)'},
+    denominators={'n_branches_totali': n_tot, 'n_qc_ok': n_qc_ok,
+                  'n_punti_regressione': res['n']},
+    exclusions={'qc_non_ok': n_tot - n_qc_ok,
+                'qc_ok_senza_calibro_o_parete': n_qc_ok - res['n']})
 json.dump(res, open('out/pi10.json', 'w'), indent=1)
 
 if res['pi10'] is not None:

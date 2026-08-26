@@ -1,21 +1,28 @@
 """QC di leak/connettivita' della maschera vie aeree (compute standalone).
 
 Calcola, sul risultato della segmentazione gia' in out/, le metriche del nucleo
-leak_qc_core (radius-explosion, connettivita'/isole, leak extrapolmonare) e scrive
-out/leak_qc.json. Queste metriche sono il METRO con cui confronteremo i backend di
-segmentazione (TotalSegmentator vs AeroPath vs ...): vedono i leak INTERNI (cisti/
-bolle) che la vecchia guardia "fuori dal polmone" non vedeva.
+leak_qc_core (radius-explosion e connettivita'/isole) e scrive out/leak_qc.json.
+Queste metriche sono il METRO con cui confronteremo i backend di segmentazione
+(TotalSegmentator vs AeroPath vs ...): vedono i leak INTERNI (cisti/bolle) che la
+vecchia guardia "fuori dal polmone" non vedeva. Il leak extrapolmonare/esofageo NON
+e' calcolato (v1): vedi la nota in leak_qc_core sul perche' serve un vero inviluppo.
 
 Dipendenze nel work dir: out/tree_measured.json, out/airway_mask.nii.gz,
-out/lung_mask_ds.nii.gz (opz., per l'extrapolmonare), out/seg_info.json.
-Si salta con grazia se manca l'essenziale. Gira nel work dir dopo la pipeline.
+out/seg_info.json. Si salta con grazia se manca l'essenziale. Gira dopo la pipeline.
 """
 import json
 import os
 
 import numpy as np
 
-from leak_qc_core import leak_summary, radius_explosion
+from leak_qc_core import (
+    BALLOON_MM,
+    CENTRAL_AIDS,
+    MED_MM,
+    leak_summary,
+    radius_explosion,
+)
+from provenance import provenance
 
 TREE = 'out/tree_measured.json'
 AW = 'out/airway_mask.nii.gz'
@@ -68,6 +75,14 @@ total_ml = total_vox * vox_ml
 res = leak_summary(explosion, n_components, largest_frac, leaked_ml, total_ml=total_ml)
 res['schema_version'] = 1
 res['status'] = 'exploratory'
+res['provenance'] = provenance(
+    'leak_qc',
+    params={'radius_explosion_ratio_hi': 1.6, 'radius_explosion_floor_mm': 4.0,
+            'central_aids_esclusi': sorted(CENTRAL_AIDS),
+            'soglie_esplorative_mm': {'balloon': BALLOON_MM, 'medio': MED_MM}},
+    denominators={'n_componenti': n_components, 'albero_ml': round(total_ml, 2)},
+    exclusions={'leak_extrapolmonare': 'non calcolato in v1 (serve inviluppo '
+                                       'vie aeree + ROI negative annotate)'})
 json.dump(res, open('out/leak_qc.json', 'w'), indent=1)
 
 m = res['metrics']

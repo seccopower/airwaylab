@@ -11,6 +11,7 @@ import os
 import numpy as np
 from scipy import ndimage
 
+from provenance import provenance
 from vascular_gradient_core import pruning_summary
 
 VES = 'out/vessel_mask.nii.gz'
@@ -84,8 +85,23 @@ for lo, hi in zip(EDGES, EDGES[1:]):
 
 res = pruning_summary(shells)
 res['schema_version'] = 1
+res['status'] = 'exploratory'
 res['note'] = ('densita piccoli vasi vs distanza dalla pleura; campo di distanza '
                'su griglia x3. Confronti a parita di protocollo.')
+
+# "piccolo vaso" = residuo di apertura morfologica r=1.26 mm sulla maschera vaso:
+# e' un proxy morfologico, NON la sezione ortogonale del vaso (BV5 vero). Lo diciamo
+# nella provenienza cosi' non venga letto come BV5.
+res['provenance'] = provenance(
+    'vascular_opening_residual_gradient',
+    params={'small_vessel': 'residuo di apertura morfologica r=1.26 mm '
+                            '(sqrt(5/pi)); proxy, non sezione ortogonale',
+            'periph_mm': 15.0, 'shell_edges_mm': EDGES,
+            'distanza': 'EDT dalla pleura su griglia x3'},
+    denominators={'n_shell': len(shells),
+                  'n_voxel_vaso': int(zc.size)},
+    exclusions={'griglia_x3': 'aliasing di fase nel campo di distanza',
+                'maschera_vaso': 'strutture dense candidate a vaso, non solo vaso'})
 json.dump(res, open('out/vascular_gradient.json', 'w'), indent=1)
 
 print('Gradiente di pruning vascolare:')
