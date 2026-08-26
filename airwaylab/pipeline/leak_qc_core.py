@@ -11,13 +11,13 @@ Due famiglie, entrambe calcolabili SENZA ground-truth (girano su ogni paziente):
 
   1. RADIUS-EXPLOSION — un ramo distale marcatamente PIU' LARGO del suo genitore.
      Le vie aeree si assottigliano andando in periferia: un figlio piu' largo del
-     padre e' un leak in uno spazio non-aereo (cisti/bolla/esofago). Si misura sul
+     padre e' spesso un leak in uno spazio non-aereo (cisti/bolla/esofago). Si misura sul
      diametro della MASCHERA (d_mask_eq), quindi si vede ANCHE dove non c'e' lume.
      Scala-indipendente e robusto alla numerazione delle generazioni.
 
   2. CONNETTIVITA' / ISOLE — un albero aereo e' UN solo componente connesso.
-     Frammenti staccati (isole) sono falsi positivi. Si contano i componenti e il
-     volume che NON sta nel componente principale.
+     Frammenti staccati (isole) sono spesso falsi positivi. Si contano i componenti e
+     il volume che NON sta nel componente principale.
 
 NON incluso in v1 (onestamente): il leak EXTRAPOLMONARE/esofageo. La maschera
 polmonare di lung.py SOTTRAE le vie aeree per costruzione (air & ~dilate(airway)),
@@ -72,14 +72,15 @@ def connectivity_flag(n_components, largest_frac, leaked_ml,
     return {'code': 'islands', 'severity': sev,
             'msg': f'maschera in {n_components} componenti: {leaked_ml:.1f} ml '
                    f'({100 * (1 - largest_frac):.1f}%) fuori dall\'albero principale '
-                   f'(isole = falsi positivi staccati)'}
+                   f'(isole = frammenti staccati, spesso falsi positivi)'}
 
 
 # La severita' del radius-explosion scala con la DIMENSIONE del ramo che si gonfia:
-# un vero leak in cisti/bolla/esofago diventa un pallone (>= ~10 mm); un ramo appena
-# sopra soglia a 4-5 mm e' quasi sempre una biforcazione o rumore, non un leak. Cosi'
-# il QC resta silenzioso sui casi benigni e grida solo quando serve.
-BALLOON_MM = 10.0     # >= : leak vero (alto)
+# un leak in cisti/bolla/esofago diventa un pallone (>= ~10 mm); un ramo appena sopra
+# soglia a 4-5 mm e' quasi sempre una biforcazione o rumore. Cosi' il QC resta
+# silenzioso sui casi benigni e grida solo quando serve. Soglie OPERATIVE/ESPLORATIVE,
+# non clinicamente validate.
+BALLOON_MM = 10.0     # >= : sospetto leak (alto)
 MED_MM = 6.0          # >= : da verificare (medio); sotto = basso (informativo)
 
 

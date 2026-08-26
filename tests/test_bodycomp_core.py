@@ -12,12 +12,14 @@ from bodycomp_core import (   # noqa: E402
 )
 
 
-def test_bone_normale_e_basso():
+def test_bone_media_minimo_senza_flag():
     ok = bone_summary({'T8': 160.0, 'T9': 150.0, 'T10': 145.0})
     assert ok['mean_hu'] == round((160 + 150 + 145) / 3, 1)
-    assert ok['min_hu'] == 145.0 and ok['low_flag'] is False
+    assert ok['min_hu'] == 145.0
+    # il flag e' RITIRATO: sempre None, con la soglia esportata solo come nota
+    assert ok['low_flag'] is None and ok['low_hu_ref'] == 110.0
     low = bone_summary({'T8': 90.0, 'T9': 130.0})
-    assert low['low_flag'] is True          # minimo 90 < 110
+    assert low['low_flag'] is None          # anche con minimo basso: nessun allarme
 
 
 def test_bone_vuoto():
@@ -31,14 +33,16 @@ def test_muscle():
     assert muscle_summary(0, None, 0.001)['muscle_ml'] is None
 
 
-def test_fat_rapporto():
-    f = fat_summary(sat_vox=200000, vat_vox=100000, vox_ml=0.001)
-    assert f['sat_ml'] == 200.0 and f['vat_ml'] == 100.0
-    assert abs(f['vat_sat_ratio'] - 0.5) < 1e-9
+def test_fat_rapporto_interno():
+    f = fat_summary(sat_vox=200000, internal_vox=100000, vox_ml=0.001,
+                    internal_source='torso_fat')
+    assert f['sat_ml'] == 200.0 and f['internal_fat_ml'] == 100.0
+    assert abs(f['internal_sat_ratio'] - 0.5) < 1e-9
+    assert f['internal_source'] == 'torso_fat'      # nessuna etichetta VAT
 
 
 def test_summary_combina():
     s = bodycomp_summary({'T8': 150.0}, (50000, 30.0, 0.001), (100000, 50000, 0.001))
     assert s['bone']['mean_hu'] == 150.0
     assert s['muscle']['muscle_ml'] == 50.0
-    assert s['fat']['vat_sat_ratio'] == 0.5
+    assert s['fat']['internal_sat_ratio'] == 0.5

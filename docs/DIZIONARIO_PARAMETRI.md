@@ -83,26 +83,36 @@ Feret min/max, rapporto d'aspetto. Presenti anche dove il lume CT non è misurab
 e calibro maschera (mediana dei rapporti; frazione di raggi CT oltre la maschera).
 *Significato:* audit di coerenza CT↔maschera. *Codice:* `section_metrics.py`.
 
-**`pi10` — Pi10 (√WA a Pi = 10 mm)** — *Cos'è:* la metrica **standard** (Nakano) di
-rimodellamento parietale, confrontabile tra vie aeree di calibro diverso e tra
-soggetti. *Come:* per ogni via `ok` (con calibro e parete) il punto `(Pi, √WA)` con
-`Pi = π·d_lume` e `WA = π·(r_out² − r_in²)` (`r_in = d/2`, `r_out = r_in + parete`);
-regressione **√WA = a + b·Pi** su tutte le vie del soggetto → **Pi10 = a + b·10**.
-Metrica a livello di **soggetto** (un numero per esame). *Significato:* normalizza
-WA% per il calibro → l'indice di parete di riferimento nell'asma. *Limiti:* dipende
-da quali vie sono misurabili (protocollo/inspirazione) e dall'approssimazione
+**`pi10` — Pi10_AirwayLab (√WA a Pi = 10 mm)** — *Cos'è:* la nostra implementazione
+dell'indice di Nakano — √WA **predetta** a un perimetro interno del lume di 10 mm.
+È un descrittore esplorativo per soggetto, non un endpoint validato; il suffisso
+`_AirwayLab` ricorda che dipende dalla nostra pipeline di misura. *Come:* per ogni
+via `ok` (con calibro e parete) il punto `(Pi, √WA)` con `Pi = π·d_lume` e
+`WA = π·(r_out² − r_in²)` (`r_in = d/2`, `r_out = r_in + parete`); regressione
+**√WA = a + b·Pi** su tutte le vie del soggetto → **Pi10 = a + b·10**. Metrica a
+livello di **soggetto** (un numero per esame). *Significato:* riporta lo spessore di
+parete a un perimetro fisso (10 mm) per confrontare vie di calibro diverso — **non**
+è una "normalizzazione di WA%", è il valore letto dalla retta √WA–Pi in un punto
+fisso. *Diagnostica esportata:* range dei perimetri osservati (`pi_min`/`pi_max`),
+flag `extrapolation` quando 10 mm cade fuori dal range (il valore è estrapolato, non
+interpolato), copertura, CI 95% bootstrap e sensibilità leave-one-out. *Limiti:*
+dipende da quali vie sono misurabili (protocollo/inspirazione) e dall'approssimazione
 circolare del perimetro; serve n ≥ 10; confronti solo a parità di protocollo.
 *Codice:* `pi10_core.py`, `pi10.py` → `out/pi10.json`.
 
 **Tapering (`taper_ratio_med`, `taper_rate_pct_per_cm`)** — *Cos'è:* la rastremazione
 del calibro verso la periferia; la sua perdita è il segno delle bronchiectasie.
-*Come:* (1) **rapporto figlio/genitore** del lume a ogni biforcazione tra rami `ok`
-→ mediana e `frac_no_taper` (frazione con ratio > 0.9); (2) **gradiente globale**: fit
-`ln(d_mean) = a + b·L` sulla distanza cumulativa dalla carena → `rate = (1 − e^{b·10})·100`
-= % di riduzione del calibro per cm. *Significato:* sano ratio ~0.79 (Murray
-`2^(−1/3)`); ratio → 1 o rate → 0 = tapering perso. *Limiti:* dipende dai rami
-misurabili; riferimenti da stabilire sulla coorte a parità di protocollo. *Codice:*
-`tapering_core.py`, `tapering.py` → `out/tapering.json`.
+*Come:* (1) **rapporto figlio/genitore** del lume su ogni **adiacenza topologica
+padre-figlio** tra rami `ok` (incluse le catene mono-figlio, non solo le biforcazioni
+vere) → mediana e `frac_no_taper` (frazione con ratio > 0.9); (2) **gradiente
+globale**: fit `ln(d_mean) = a + b·L` sulla distanza cumulativa **dalla radice** al
+punto medio del ramo → `rate = (1 − e^{b·10})·100` = % di riduzione del calibro per
+cm. *Significato:* `2^(−1/3) ≈ 0.79` è il valore atteso per un ramo che si biforca in
+modo simmetrico (Murray) — è un **riferimento teorico**, non una soglia clinica di
+normalità; ratio → 1 o rate → 0 indica meno rastremazione. *Limiti:* dipende dai rami
+misurabili; le soglie 0.79/0.9 sono operative, i riferimenti di normalità vanno
+stabiliti sulla coorte a parità di protocollo. *Codice:* `tapering_core.py`,
+`tapering.py` → `out/tapering.json`.
 
 **BA ratio (`ba`)** — Rapporto `diametro lume bronco / diametro arteria satellite`,
 su coppie vicine, parallele (`|cos| > 0.6`) e di calibro plausibile; mediana per
@@ -117,11 +127,16 @@ complesso arriva l'albero visibile (indice di completezza + rimodellamento). *Co
 conteggi (`n_branches`, `n_terminals`, per generazione, lunghezza totale) dai rami; e
 **AFD** (Airway Fractal Dimension) = box-counting sullo scheletro 3D — per una serie
 di lati di cella `s` si contano le celle occupate `N(s)`; `AFD = pendenza di
-log N(s) su log(1/s)`. *Significato:* nell'asma conteggio periferico e AFD calano.
-*Limiti:* conteggi e AFD dipendono dalla **profondità di segmentazione e dal
-protocollo** → confronti solo mela-con-mela (stesso backend/versione); la generazione
-si gonfia con i rami spuri. *Osservato:* i conteggi si muovono con la profondità di
-cattura, l'AFD è più robusto — da preferire nel pre/post. *Codice:*
+log N(s) su log(1/s)`. Metodo `afd_3d_fixedgrid` (griglia a origine singola, poche
+scale) — **non** è il FracLac a posizioni multiple: è una nostra variante, non una
+misura validata. *Significato:* descrivono quanto è profondo/ramificato l'albero
+**segmentato**; non sono endpoint biologici. *Denominatori:* i conteggi includono
+**tutti** i rami del grafo (anche no-lume/sotto-risoluzione); esportiamo separati
+`n_branches_grafo` e `n_branches_qc_ok` perché il numero non venga letto come "vie
+aeree visibili". *Limiti:* conteggi e AFD dipendono dalla **profondità di
+segmentazione e dal protocollo** → confronti solo mela-con-mela (stesso
+backend/versione); la generazione si gonfia con i rami spuri. Conteggi e AFD sono
+descrittori complementari: nessuno dei due è validato come endpoint. *Codice:*
 `treestats_core.py`, `treestats.py` → `out/treestats.json`.
 
 ## 2. Struttura globale
@@ -168,8 +183,9 @@ sono sottratte per costruzione (rilevante per il leak-QC). *Codice:* `lung.py` �
 **`lung_volume_l`** — Voxel di polmone × volume voxel. *Significato:* il numero di
 **comparabilità** pre/post (inspirazione). *Codice:* `lung.py`.
 
-**`mld_hu` — MLD** — Media degli HU nel polmone. Meno negativa = più densa
-(fibrosi/ground-glass o meno inspirata). *Codice:* `lung.py`.
+**`mld_hu` — MLD** — Media degli HU nella **componente aerata** (soglia aria di
+`lung.py`, non il polmone anatomico). Meno negativa = più densa (più tessuto o meno
+inspirata) — **non** è specifica per fibrosi/ground-glass. *Codice:* `lung.py`.
 
 **`laa950_pct` — LAA-950** — `% voxel < −950 HU`. Indice di enfisema/iperinflazione.
 *Limite:* su singola inspiratoria **non** è air-trapping (serve l'espiratoria).
@@ -178,14 +194,17 @@ sono sottratte per costruzione (rilevante per il leak-QC). *Codice:* `lung.py` �
 **`perc15_hu` — Perc15** — 15° percentile dell'istogramma HU polmonare. Misura di
 enfisema robusta alla soglia. *Codice:* `lung.py`.
 
-**Parenchima oltre la densità media** — *Cos'è:* il segnale delle piccole vie aeree /
-mosaic che MLD e LAA-950 nascondono. *Come:* (1) **forma dell'istogramma** HU del
-polmone — media, SD, **skewness**, **curtosi** (descrittori nominati); (2)
-**eterogeneità** = SD e IQR delle medie di densità calcolate a blocchi (~15 mm) —
-surrogato del **mosaic attenuation**; (3) **cluster LAA** (< −950): numero, frazione
-del cluster maggiore, ed esponente **D** (Mishima) dalla legge di potenza della
-distribuzione cumulativa (D basso = cluster grandi coalescenti = enfisema vero; D alto
-= tanti cluster piccoli). *Limiti:* dipende da soglia HU / kernel / volume; griglia di
+**Parenchima oltre la densità media** — *Cos'è:* descrittori di disomogeneità e
+organizzazione della bassa attenuazione, che MLD e LAA-950 nascondono. Calcolati sulla
+**componente aerata**, non sul polmone anatomico. *Come:* (1) **forma dell'istogramma**
+HU — media, SD, **skewness**, **curtosi** (descrittori nominati); (2) **eterogeneità**
+= SD e IQR delle medie di densità calcolate a blocchi (~15 mm): è disomogeneità
+regionale della densità, **non** una misura specifica di mosaic attenuation o
+air-trapping; (3) **cluster LAA** (< −950): numero, frazione del cluster maggiore, ed
+esponente **D** (Mishima) dalla legge di potenza (OLS rango-dimensione, non MLE/xmin).
+**D** descrive la distribuzione dimensionale dei cluster LAA; **non** è specifico per
+enfisema — Gupta non trovò differenze nell'asma, e il sottocampionamento ×3 altera la
+topologia dei cluster. *Limiti:* dipende da soglia HU / kernel / volume; griglia di
 analisi ×3; su inspiratoria non è air-trapping. *Codice:* `parenchyma_core.py`,
 `parenchyma.py` → `out/parenchyma.json`.
 
@@ -205,26 +224,31 @@ disegno metabolico + **controllo di coerenza** delle misure. *Codice:* `territor
 
 ## 4. Vasi (TC senza contrasto → volume di vaso, mai perfusione)
 
-**`tbv_ml` — TBV** — Volume della maschera vascolare (strutture dense nel polmone,
-escluse le pareti bronchiali). Arterie + vene insieme. Guardia se < 20 ml. *Codice:*
-`vessels.py` → `out/vessel_metrics.json`.
+**`tbv_ml` — TBV** — Volume della maschera di **strutture dense candidate a vaso** nel
+polmone (escluse le pareti bronchiali); su TC senza contrasto non è puro vaso.
+Arterie + vene insieme. Guardia se < 20 ml. *Codice:* `vessels.py` →
+`out/vessel_metrics.json`.
 
-**`bv5_ml`/`bv5_frac`, `bv10_*`** — Volume nei vasi di sezione < 5 (< 10) mm², proxy
-di **pruning** periferico, via apertura morfologica `BV5 = TBV − opened_volume(r5)`.
-*Limiti:* **approssimazione esplorativa** dello standard scale-space (Estépar);
-assoluto non confrontabile, dipende da kernel/dose → solo confronti mela-con-mela.
-*Codice:* `vessels.py`, nucleo `av_core.py` (`bvn_volumes`, `radius_for_csa`).
+**`bv5_ml`/`bv5_frac`, `bv10_*`** — **Residuo di apertura morfologica** a r ≈ 1.26 mm
+(`BV5 = TBV − opened_volume(r5)`): un proxy morfologico delle strutture sottili, **non**
+la sezione ortogonale del vaso e **non** il BV5 scale-space validato (Estépar).
+*Limiti:* esplorativo; assoluto non confrontabile, dipende da kernel/dose → solo
+confronti mela-con-mela. *Codice:* `vessels.py` (`opened_volume`, apertura a r ≈ 1.26
+mm) → `out/vessel_metrics.json`. NB: `av_core.bvn_volumes`/`radius_for_csa` servono
+l'analisi A/V **per lobo** (sotto), non il TBV/BV5 globale.
 
 **Gradiente di pruning vascolare** — *Cos'è:* la perdita centro→periferia dei piccoli
 vasi (pruning del piccolo circolo), localizzata invece che riassunta da BV5 globale.
 *Come:* distanza dalla pleura dal campo EDT della maschera polmonare (griglia ×3);
-piccoli vasi = sezione < 5 mm² (apertura `r5`, fedele a BV5 di `vessels.py`); per
-gusci di distanza si calcola la **densità di piccoli vasi** (ml piccoli / ml polmone)
-e la frazione BV5; si aggregano **periferia** (dist ≤ 15 mm) vs **centro**.
-`pruning_ratio` = densità periferica / centrale (< 1 = pruning periferico); più la
-pendenza densità–distanza. *Limiti:* dipende da soglia vasi / kernel / volume e
-dall'approssimazione ×3 del campo di distanza → mela-con-mela. *Codice:*
-`vascular_gradient_core.py`, `vascular_gradient.py` → `out/vascular_gradient.json`.
+"piccole strutture" = **residuo di apertura** a r ≈ 1.26 mm (stessa operazione di
+`vessels.py`, un proxy — non la sezione ortogonale); per gusci di distanza si calcola
+la loro **densità** (ml piccole strutture / ml polmone); si aggregano **periferia**
+(dist ≤ 15 mm) vs **centro**. `pruning_ratio` = densità periferica / centrale (ridotto
+= meno piccole strutture in periferia; **esplorativo**, non una diagnosi di pruning),
+più la pendenza densità–distanza. *Limiti:* dipende da soglia vasi / kernel / volume e
+dall'approssimazione ×3 del campo di distanza (aliasing di fase) → mela-con-mela.
+*Codice:* `vascular_gradient_core.py`, `vascular_gradient.py` →
+`out/vascular_gradient.json`.
 
 **A/V per lobo (`art_ml`, `vein_ml`, `av_ratio`)** — Volumi arterioso/venoso per lobo
 dalle maschere separate di TotalSegmentator; `av_ratio = art_ml / vein_ml`. *Codice:*
@@ -306,9 +330,10 @@ per-lobo rappresentano solo parte del polmone. *Codice:* `label_qc.py`.
 **Leak / connettività** — `radius_explosion` (ramo col diametro-maschera ≥ 1.6× il
 genitore, floor 4 mm, vie centrali escluse → leak in cisti/bolla/esofago, visibile
 anche senza lume) e isole (componenti staccati). **La severità scala con la
-dimensione** del ramo che si gonfia: ≥ 10 mm = alto (leak vero), ≥ 6 mm = medio, sotto
-= basso (informativo, non fa scattare l'allarme: a quel calibro è quasi sempre una
-biforcazione/rumore). *Limite dichiarato:* il leak
+dimensione** del ramo che si gonfia: ≥ 10 mm = alto (sospetto leak), ≥ 6 mm = medio,
+sotto = basso (informativo, non fa scattare l'allarme: a quel calibro è quasi sempre
+una biforcazione/rumore). Le soglie 10/6 mm sono **operative/esplorative**, non
+clinicamente validate. *Limite dichiarato:* il leak
 extrapolmonare/esofageo NON è in v1 (serve un inviluppo delle vie aeree). Non
 penalizza i rami senza lume (possibili tappi). *Codice:* `leak_qc_core.py`,
 `leak_qc.py` → `out/leak_qc.json`.
@@ -326,16 +351,20 @@ Dallo stesso esame, *se* sono presenti le maschere di composizione corporea (tas
 il ponte AeroPath — non appesantisce il comando unico. Strumento: `tools/bodycomp.py`.
 
 **Osso (`bone`)** — attenuazione trabecolare media per corpo vertebrale (HU, con lieve
-erosione per togliere il corticale); media, minimo e un **flag esplorativo** (minimo
-< ~110 HU). *Significato:* screening osteoporosi opportunistico — rilevante negli
-asmatici sotto steroide. *Limiti:* **non diagnostico**; dipende da livello vertebrale,
-kernel, kV. *Codice:* `bodycomp_core.py`, `tools/bodycomp.py`.
+erosione per togliere il corticale); media e minimo. **Nessun flag automatico**: la
+soglia ~110 HU non è validata per questa ROI (corpo vertebrale intero eroso di 2 vox,
+livelli toracici misti) — resta come nota, non come allarme. *Significato:* indicatore
+grezzo di densità ossea, **esplorativo**; non è uno screening osteoporosi validato.
+*Limiti:* **non diagnostico**; dipende da livello vertebrale, kernel, kV. *Codice:*
+`bodycomp_core.py`, `tools/bodycomp.py`.
 
 **Muscolo (`muscle`)** — volume del muscolo scheletrico (ml) e attenuazione media (HU
-bassa = infiltrazione adiposa / miosteatosi). *Significato:* surrogato di sarcopenia.
+bassa = più infiltrazione adiposa). *Significato:* massa e qualità muscolare grezze;
+**non** è una misura validata di sarcopenia (che richiede indici e soglie EWGSOP2).
 
-**Grasso (`fat`)** — volume sottocutaneo (SAT) e viscerale/tronco (VAT), con rapporto
-VAT/SAT.
+**Grasso (`fat`)** — volume sottocutaneo (`sat_ml`) e grasso **interno del tronco**
+(`internal_fat_ml`, dal `torso_fat` di TotalSegmentator — **non** è VAT segmentato),
+con rapporto `internal_sat_ratio`.
 
 *Limiti comuni:* valori dipendenti da kernel/dose/kV e campo di vista → confronti solo
 a parità di protocollo. Screening, non diagnosi. Output: `bodycomp.json`.
@@ -349,7 +378,7 @@ a parità di protocollo. Screening, non diagnosi. Output: `bodycomp.json`.
 | `out/seg_info.json` | iso, spacing nativo, backend, versione, provenienza |
 | `out/lung_metrics.json` | volume, MLD, LAA-950, Perc15, dysanapsis, ALR4 |
 | `out/parenchyma.json` | istogramma HU (skew/kurt), eterogeneità, cluster LAA (D) |
-| `out/pi10.json` | Pi10 (√WA a Pi=10), slope, R², n |
+| `out/pi10.json` | Pi10 (√WA a Pi=10), slope, R², n, range Pi, flag estrapolazione, CI95 bootstrap, leave-one-out |
 | `out/tapering.json` | rapporto figlio/genitore, gradiente %/cm |
 | `out/treestats.json` | conteggi rami/terminali/gen, lunghezza, AFD |
 | `out/territories.json`, `out/murray.json`, `out/territory_index.json` | territori, fit di Murray, indice lobo |
@@ -360,7 +389,7 @@ a parità di protocollo. Screening, non diagnosi. Output: `bodycomp.json`.
 | `out/morphomap.json`, `out/flow.json`, `out/uncertainty.json` | esplorativi (+ `plausibilita_lobare`, `labeling` in morphomap.json) |
 | `out/leak_qc.json` | leak/connettività |
 | `<caso>_seg/backend_info.json` | provenienza segmentazione |
-| `bodycomp.json` (opt-in) | osso (HU vertebrale), muscolo (ml/HU), grasso (SAT/VAT) |
+| `bodycomp.json` (opt-in) | osso (HU vertebrale), muscolo (ml/HU), grasso (SAT / interno del tronco) |
 
 ---
 

@@ -13,8 +13,10 @@ poi:
     python tools/bodycomp.py caso.nii.gz caso_body caso_bodycomp.json
 
 Lo strumento cerca nelle maschere: *vertebra* (una per corpo vertebrale),
-*skeletal_muscle*/*muscle*, *subcutaneous_fat* (SAT), *torso_fat*/*visceral* (VAT).
-Riporta i valori; le soglie sono esplorative, non diagnostiche.
+*skeletal_muscle*/*muscle*, *subcutaneous_fat* (SAT), *torso_fat*/*visceral* (grasso
+INTERNO del tronco). NB: il `torso_fat` di TotalSegmentator NON e' VAT segmentato —
+lo riportiamo come `internal_fat_ml`, non come VAT. Valori esplorativi, non
+diagnostici.
 """
 import argparse
 import glob
@@ -75,37 +77,40 @@ def main(argv=None):
         if m.any():
             muscle = (int(m.sum()), float(ct[m].mean()), vox_ml)
 
-    # GRASSO: SAT + VAT
-    sat_vox = vat_vox = None
+    # GRASSO: SAT + grasso interno del tronco (torso_fat, NON VAT segmentato)
+    sat_vox = internal_vox = None
+    internal_source = None
     sf = _find(args.segdir, "*subcutaneous_fat*.nii.gz")
     if sf:
         sat_vox = int(_mask(sf[0]).sum())
     vf = _find(args.segdir, "*torso_fat*.nii.gz", "*visceral*.nii.gz")
     if vf:
-        vat_vox = int(_mask(vf[0]).sum())
-    fat = (sat_vox, vat_vox, vox_ml) if (sat_vox or vat_vox) else None
+        internal_vox = int(_mask(vf[0]).sum())
+        internal_source = os.path.basename(vf[0]).replace(".nii.gz", "")
+    fat = ((sat_vox, internal_vox, vox_ml, internal_source)
+           if (sat_vox or internal_vox) else None)
 
     res = bodycomp_summary(vertebra_hu, muscle, fat)
-    res["schema_version"] = 1
-    res["note"] = ("screening opportunistico, non diagnostico; valori dipendono da "
+    res["schema_version"] = 2
+    res["note"] = ("descrittori esplorativi, non diagnosi; valori dipendono da "
                    "kernel/dose/kV e campo di vista -> confronti a parita' di protocollo")
     with open(args.out, "w") as f:
         json.dump(res, f, indent=1)
 
     b, mu, ft = res["bone"], res["muscle"], res["fat"]
-    print("Biomarcatori opportunistici:")
+    print("Biomarcatori opportunistici (esplorativi, non diagnostici):")
     if b["n"]:
-        flag = "  [BASSO — esplorativo, verificare]" if b["low_flag"] else ""
         print(f"  osso: HU vertebrale media {b['mean_hu']} · minimo {b['min_hu']} "
-              f"({b['n']} vertebre){flag}")
+              f"({b['n']} vertebre) — nessun flag automatico (soglia non validata)")
     else:
         print("  osso: nessuna maschera vertebrale trovata")
     if mu["muscle_ml"]:
         print(f"  muscolo: {mu['muscle_ml']} ml · HU {mu['muscle_hu']} "
               f"(HU bassa = infiltrazione adiposa)")
-    if ft["sat_ml"] or ft["vat_ml"]:
-        print(f"  grasso: SAT {ft['sat_ml']} ml · VAT {ft['vat_ml']} ml · "
-              f"VAT/SAT {ft['vat_sat_ratio']}")
+    if ft["sat_ml"] or ft["internal_fat_ml"]:
+        src = f" [{ft['internal_source']}]" if ft.get("internal_source") else ""
+        print(f"  grasso: SAT {ft['sat_ml']} ml · interno tronco {ft['internal_fat_ml']} ml{src} "
+              f"· interno/SAT {ft['internal_sat_ratio']} (torso_fat, non VAT segmentato)")
     print(f"salvato {args.out}")
     return 0
 

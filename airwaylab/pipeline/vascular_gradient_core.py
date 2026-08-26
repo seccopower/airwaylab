@@ -1,16 +1,18 @@
 """Gradiente di pruning vascolare (nucleo puro).
 
 Il pruning e' la perdita dei piccoli vasi periferici (marker QCT di rimodellamento
-del piccolo circolo). BV5/TBV globale la riassume; il GRADIENTE la localizza:
-la densita' di piccoli vasi in funzione della distanza dalla pleura. In un polmone
-sano i piccoli vasi popolano la periferia; nel pruning la densita' periferica cala.
+del piccolo circolo). Qui NON lo misuriamo direttamente: usiamo un PROXY morfologico
+— il residuo di apertura a r ≈ 1.26 mm sulla maschera di strutture dense candidate a
+vaso — e ne guardiamo la distribuzione. Il GRADIENTE la localizza: densita' di
+piccole strutture in funzione della distanza dalla pleura.
 
 Su gusci di distanza-dalla-pleura si calcola:
-  - densita' di piccoli vasi   = ml piccoli vasi / ml polmone   (per guscio)
-  - frazione BV5               = ml piccoli vasi / ml vasi totali (per guscio)
+  - densita' di piccole strutture = ml piccole strutture / ml polmone   (per guscio)
+  - frazione "bv5"                = ml piccole strutture / ml totali     (per guscio)
 poi si aggregano PERIFERIA (dist <= periph_mm) vs CENTRO e si stima la pendenza
-della densita' sulla distanza. `pruning_ratio` = densita' periferica / centrale:
-< 1 o ridotto = pruning periferico.
+della densita' sulla distanza. `pruning_ratio` = densita' periferica / centrale: un
+valore ridotto indica meno piccole strutture in periferia — ESPLORATIVO, non una
+diagnosi di pruning ne' una misura fisiologica.
 
 CAVEAT: dipende dalla soglia dei vasi, da kernel/dose e dal volume inspiratorio, e
 dall'approssimazione del campo di distanza sulla griglia ×3 → confronti solo a

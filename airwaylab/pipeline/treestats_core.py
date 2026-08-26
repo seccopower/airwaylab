@@ -1,14 +1,17 @@
 """Morfometria dell'albero: conteggi + dimensione frattale (nucleo puro).
 
-"Quanto in profondita' e quanto complesso" arriva l'albero visibile — un indice di
-completezza *e* di rimodellamento (nell'asma il conteggio periferico cala). Due
-letture:
+"Quanto in profondita' e quanto complesso" arriva l'albero SEGMENTATO — descrittori
+esplorativi, non endpoint biologici. Due letture:
 
   1. CONTEGGI — n. rami, n. terminali, conteggio per generazione, lunghezza totale.
-  2. AFD (Airway Fractal Dimension) — dimensione frattale via box-counting sullo
-     scheletro 3D: per una serie di lati di cella s si contano le celle occupate
-     N(s); AFD = pendenza di log N(s) su log(1/s). Un albero piu' ramificato/che
-     riempie lo spazio ha AFD piu' alta; il rimodellamento la riduce.
+     NB: contano TUTTI i rami del grafo (anche no-lume/sotto-risoluzione): sono un
+     conteggio della segmentazione, non delle vie aeree misurabili. Il runner
+     esporta separati n_branches_grafo e n_branches_qc_ok.
+  2. AFD (Airway Fractal Dimension) — box-counting sullo scheletro 3D con griglia a
+     origine SINGOLA e poche scale (`afd_3d_fixedgrid`): per una serie di lati di
+     cella s si contano le celle occupate N(s); AFD = pendenza di log N(s) su
+     log(1/s). NON e' il FracLac a posizioni multiple ne' una misura validata:
+     descrive la complessita' dell'albero, complementare ai conteggi.
 
 CAVEAT centrale: conteggi e AFD dipendono dalla PROFONDITA' di segmentazione e dal
 protocollo (spessore/dose/backend). NON sono confrontabili tra protocolli diversi;

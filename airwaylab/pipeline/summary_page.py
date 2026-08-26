@@ -110,10 +110,11 @@ parench = section(
         tile('MLD', lm.get('mld_hu'), ' HU', 'densita media polmone'),
         tile('LAA-950', lm.get('laa950_pct'), ' %', '<-950 HU (enfisema/iperinflazione)'),
         tile('Perc15', lm.get('perc15_hu'), ' HU', '15° percentile'),
-        tile('Eterogeneita (mosaic)', het.get('het_sd_hu'), ' HU',
-             'SD regionale della densita'),
+        tile('Eterogeneità (SD regionale)', het.get('het_sd_hu'), ' HU',
+             'disomogeneità regionale — non specifica per mosaic/air-trapping'),
         tile('Cluster LAA — D', clu.get('D'), '',
-             f"esponente Mishima · maggiore {clu.get('largest_frac')}"),
+             f"esponente rango-dimensione · maggiore {clu.get('largest_frac')} · "
+             f"non specifico per enfisema"),
         tile('Skewness / Kurtosi',
              (f"{hg.get('skewness')} / {hg.get('kurtosis')}" if hg.get('skewness') is not None else None),
              '', 'forma dell istogramma HU'),
@@ -121,16 +122,18 @@ parench = section(
 
 # --- Vasi ---
 vessels = section(
-    'Vasi (TC senza contrasto → volume di vaso)',
-    'Volume vascolare e pruning periferico dei piccoli vasi.',
+    'Strutture vascolari (TC senza contrasto)',
+    'Volume di strutture dense candidate a vaso e loro distribuzione periferica. Proxy morfologici, non calibro vero.',
     [
-        tile('TBV', vm.get('tbv_ml'), ' ml', 'volume vascolare totale'),
-        tile('BV5', (round(100 * vm['bv5_frac'], 0) if vm.get('bv5_frac') is not None else None), ' %',
-             'quota nei vasi < 5 mm²'),
+        tile('TBV', vm.get('tbv_ml'), ' ml',
+             'volume maschera strutture dense (candidate vaso)'),
+        tile('Piccole strutture <5mm²',
+             (round(100 * vm['bv5_frac'], 0) if vm.get('bv5_frac') is not None else None), ' %',
+             'residuo di apertura r≈1.26 mm (proxy, non BV5 validato)'),
         tile('Pruning ratio', vg.get('pruning_ratio'), '',
-             'densita piccoli vasi periferia/centro (<1 = pruning)'),
+             'densità piccole strutture periferia/centro (ridotto = meno in periferia; esplorativo)'),
         tile('Gradiente pruning', vg.get('gradient_per_mm'), '/mm',
-             'densita piccoli vasi vs distanza dalla pleura'),
+             'densità piccole strutture vs distanza dalla pleura'),
     ])
 
 # --- Biomarcatori opportunistici (opt-in) ---
@@ -142,12 +145,12 @@ opportun = section(
     'Opt-in, dalle maschere di composizione corporea. Screening, non diagnosi.',
     [
         tile('Osso — HU vertebrale', bone.get('mean_hu'), ' HU',
-             f"min {bone.get('min_hu')} · n {bone.get('n')} · screening, non diagnostico",
-             warn=bool(bone.get('low_flag'))),
+             f"min {bone.get('min_hu')} · n {bone.get('n')} · esplorativo, non diagnostico"),
         tile('Muscolo', mus.get('muscle_ml'), ' ml',
-             f"HU {mus.get('muscle_hu')} (bassa = miosteatosi)"),
-        tile('Grasso VAT/SAT', fat.get('vat_sat_ratio'), '',
-             f"SAT {fat.get('sat_ml')} · VAT {fat.get('vat_ml')} ml"),
+             f"HU {mus.get('muscle_hu')} (bassa = infiltrazione adiposa)"),
+        tile('Grasso interno/SAT', fat.get('internal_sat_ratio'), '',
+             f"SAT {fat.get('sat_ml')} · interno tronco {fat.get('internal_fat_ml')} ml "
+             f"(torso_fat, non VAT segmentato)"),
     ])
 
 cards = ''.join([airways, parench, vessels, opportun]) or '<p class="note">Nessun descrittore disponibile.</p>'

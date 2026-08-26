@@ -4,14 +4,17 @@ MLD/LAA-950 riassumono male: la malattia delle piccole vie aeree nell'asma vive
 nella DISOMOGENEITA' e nell'ORGANIZZAZIONE della bassa attenuazione, non nella media.
 Tre letture interpretabili (niente radiomics opache):
 
-  1. FORMA dell'istogramma HU del polmone — media, SD, asimmetria (skewness) e
-     curtosi. Descrittori nominati e spiegabili.
-  2. ETEROGENEITA' regionale (surrogato del mosaic attenuation) — deviazione delle
-     medie di densita' calcolate a blocchi: alta = attenuazione a mosaico.
+  1. FORMA dell'istogramma HU — media, SD, asimmetria (skewness) e curtosi.
+     Descrittori nominati e spiegabili. NB: calcolati sulla COMPONENTE AERATA
+     (soglia aria), non sul polmone anatomico.
+  2. ETEROGENEITA' regionale — deviazione delle medie di densita' calcolate a
+     blocchi. E' disomogeneita' regionale della densita', NON una misura specifica
+     di mosaic attenuation o air-trapping (che richiede l'espiratoria).
   3. CLUSTER LAA — distribuzione delle dimensioni dei componenti a bassa attenuazione:
      numero, frazione del cluster maggiore, ed esponente D (Mishima) dalla legge di
-     potenza della distribuzione cumulativa. D basso = cluster grandi coalescenti
-     (enfisema vero); D alto = tanti cluster piccoli (rumore/early).
+     potenza (OLS rango-dimensione, non MLE/xmin). D DESCRIVE la distribuzione
+     dimensionale dei cluster; NON e' specifico per enfisema (Gupta non trovo'
+     differenze nell'asma) e il sottocampionamento ×3 ne altera la topologia.
 
 CAVEAT: dipendono da soglia HU, kernel/dose e volume inspiratorio → confronti solo a
 parita' di protocollo. Su singola inspiratoria la bassa attenuazione non e'
