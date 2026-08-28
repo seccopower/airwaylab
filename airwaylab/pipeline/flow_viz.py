@@ -1,16 +1,19 @@
 """Visualizzazione del modello di flusso 1D (ESPLORATIVO) — pagina standalone.
 
-L'albero 3D del paziente colorato dalla fisica:
-  - colore del ramo   = caduta di pressione cumulativa dall'ingresso (sequenziale,
-                        un solo colore chiaro->scuro: magnitudo)
-  - spessore del ramo = flusso che lo attraversa (radice quadrata, per leggibilita')
-  - punti terminali   = ventilazione specifica del territorio (divergente attorno a 1:
-                        blu = ipo-ventilato, arancio = iper-ventilato, grigio = atteso)
-  - hover             = ogni ramo dichiara d (misurato/imputato), Q, v, dP, Re; watermark 'SIMULAZIONE'
+L'albero 3D del paziente colorato dalla fisica, PIU' quattro pannelli di lettura
+(pure CSS/SVG, nessun grafico Plotly aggiuntivo):
+  - albero 3D   : colore = caduta di pressione cumulativa; spessore = flusso;
+                  punti terminali = ventilazione specifica (divergente attorno a 1)
+  - per lobo    : dove cade la pressione, vista anatomica (barre orizzontali)
+  - misura/modello: quota della dissipazione da diametri MISURATI vs imputati
+  - ventilazione: distribuzione della ventilazione specifica (istogramma log)
+  - occlusione  : esperimento plug prima/dopo (Raw globale vs territorio perso)
 
-Run nel work dir dopo flow.py. Output: out/flow_viz.html (autonomo, plotly inline).
+Tutti i numeri restano SIMULAZIONE. Run nel work dir dopo flow.py.
+Output: out/flow_viz.html (autonomo, plotly inline).
 """
 import json
+import math
 import os
 
 import numpy as np
@@ -56,6 +59,10 @@ qmax = max(v['model_q_ml_s'] for v in PR.values()) or 1.0
 SEQ = ['#dbe9f9', '#b3d0f0', '#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b']
 # divergente per la ventilazione specifica: blu <- grigio -> arancio
 DIV_LO, DIV_MID, DIV_HI = '#2a78d6', '#9a9891', '#eb6834'
+
+
+def _esc(s):
+    return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 def seq_color(frac):
@@ -108,17 +115,109 @@ traces.append({'type': 'scatter3d', 'mode': 'markers',
                'marker': {'size': 3.5, 'color': tc},
                'hovertemplate': tt, 'showlegend': False})
 
-gen_share = flow['model_quota_caduta_pct_per_generazione']
 raw = flow['model_raw_albero_cmH2O_s_L']
 cv = flow['model_ventilazione_specifica']['cv']
-
-plugs = flow.get('occlusione_plug', [])
-plug_txt = ' · '.join(
-    f"{p['plug']} ({p['zona']}): −{p['ml_esclusi']} ml, ΔRaw {p['delta_raw_pct']:+}%"
-    + ('' if p.get('converged', True) else ' ⚠ scenario non convergente')
-    for p in plugs) or '—'
 sens = flow.get('sensibilita_one_at_a_time', [])
-frac_meas = flow.get('quota_dissipazione_da_diametri_misurati_pct', '?')
+frac_meas = flow.get('quota_dissipazione_da_diametri_misurati_pct', 0.0)
+
+# ---------- pannello 01: caduta di pressione per lobo -------------------------
+LOBE_IT = {'CENTRAL': 'Centrali', 'LING': 'Lingula'}
+lobe_share = flow.get('model_quota_caduta_pct_per_lobo', {})
+periph_share = round(100.0 - sum(lobe_share.values()), 1)
+items = [(LOBE_IT.get(k, k), v, False) for k, v in lobe_share.items()]
+if periph_share > 0.05:
+    items.append(('Periferia*', periph_share, True))     # completamento imputato
+items.sort(key=lambda t: -t[1])
+vmax_l = max([v for _, v, _ in items]) or 1.0
+_lrows = []
+for lab, v, hatched in items:
+    w = 100.0 * v / vmax_l
+    if hatched:
+        fill = 'class="lfill lhatch"'
+    else:
+        col = SEQ[min(len(SEQ) - 1, int(v / vmax_l * len(SEQ)))]
+        fill = f'class="lfill" style="width:{w:.1f}%;background:{col}"'
+    if hatched:
+        fill = f'class="lfill lhatch" style="width:{w:.1f}%"'
+    _lrows.append(f'<div class="lrow"><div class="llab">{_esc(lab)}</div>'
+                  f'<div class="ltrack"><div {fill}></div></div>'
+                  f'<div class="lval">{v}%</div></div>')
+lobe_bars = ''.join(_lrows)
+
+# ---------- pannello 03: misura vs modello -----------------------------------
+n_meas = flow.get('diametri_misurati', 0)
+n_imp = flow.get('diametri_imputati', 0)
+fm = float(frac_meas) if frac_meas not in (None, '?') else 0.0
+fi = round(100.0 - fm, 1)
+
+# ---------- pannello 05: distribuzione della ventilazione specifica -----------
+EDGES = [0, 0.5, 0.71, 1.0, 1.41, 2.0, 2.83, 4.0, 8.0, 16.0, float('inf')]
+XLAB = ['&lt;.5', '.5–.7', '.7–1', '1–1.4', '1.4–2', '2–2.8', '2.8–4', '4–8', '8–16', '&gt;16']
+counts = [0] * (len(EDGES) - 1)
+for v in SV.values():
+    for i in range(len(EDGES) - 1):
+        if EDGES[i] <= v < EDGES[i + 1]:
+            counts[i] += 1
+            break
+cmax = max(counts) or 1
+_BLUE3 = ['#2a78d6', '#5598e7', '#86b6ef']    # i<=2 (<1), saturo lontano da 1
+_OR_OP = [0.5, 0.62, 0.72, 0.82, 0.9, 0.96, 1.0]   # i>=3 (>1), opacita' crescente
+
+
+def _hcolor(i):
+    if i <= 2:
+        return _BLUE3[i]
+    return f'rgba(235,104,52,{_OR_OP[i - 3]})'
+
+
+_hbars = ''.join(
+    f'<div class="hbar" style="height:{max(2.0, 100.0 * c / cmax):.1f}%;'
+    f'background:{_hcolor(i)}" title="{XLAB[i]}: {c}"></div>'
+    for i, c in enumerate(counts))
+_hxlab = ''.join(f'<div>{lab}</div>' for lab in XLAB)
+
+# ---------- pannello 06: occlusione plug prima/dopo ---------------------------
+plugs = sorted(flow.get('occlusione_plug', []), key=lambda p: -p.get('ml_esclusi', 0))
+if plugs:
+    p0 = plugs[0]
+    after = p0.get('model_raw_occlusa_cmH2O_s_L', raw)
+    dpct = p0.get('delta_raw_pct', 0.0)
+    ml = p0.get('ml_esclusi', 0.0)
+    mx = max(raw, after) or 1.0
+    hb = max(6.0, 100.0 * raw / mx)
+    ha = max(6.0, 100.0 * after / mx)
+    extra = ''
+    if len(plugs) > 1:
+        extra = ('<p class="note" style="margin-top:10px">altri ' + str(len(plugs) - 1)
+                 + ' plug: ' + ' · '.join(
+                     f"{_esc(p.get('zona', p.get('plug')))} −{p.get('ml_esclusi')} ml "
+                     f"(ΔRaw {p.get('delta_raw_pct'):+}%)" for p in plugs[1:4]) + '</p>')
+    plug_panel = f"""
+    <div class="plugwrap">
+      <div class="pba">
+        <div class="pcap">Raw globale</div>
+        <div class="pbars">
+          <div class="pcol"><div class="pbar" style="height:{hb:.0f}%"></div><div class="ptag">prima</div></div>
+          <div class="pcol"><div class="pbar" style="height:{ha:.0f}%"></div><div class="ptag">dopo</div></div>
+        </div>
+        <div class="pnum">{raw} → {after} · <b>{dpct:+}%</b></div>
+      </div>
+      <div class="pcallout">
+        <div class="pbig">−{ml} ml</div>
+        <div class="note" style="margin:0">territorio de-ventilato a valle del plug
+          (<b>{_esc(p0.get('zona', p0.get('plug', '')))}</b>) — invisibile nella Raw
+          globale, visibile nella mappa regionale.</div>
+      </div>
+    </div>{extra}
+    <p class="note" style="margin-top:8px">Il punto onesto è il contrasto: la Raw globale
+       non si muove, ma un territorio si perde. Osservazione del modello, non claim clinico.</p>"""
+else:
+    plug_panel = ('<p class="note">Nessun candidato mucus plug in questo caso: '
+                  'niente esperimento di occlusione da mostrare.</p>')
+
+# Pedley on/off per la tile di sensibilita'
+pedley_on = next((s['model_raw'] for s in sens if s['parametro'] == 'pedley' and s['valore']), raw)
+pedley_off = next((s['model_raw'] for s in sens if s['parametro'] == 'pedley' and not s['valore']), '?')
 
 html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
 <title>__NAME__ — flusso simulato (esplorativo)</title>
@@ -127,12 +226,12 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
   .viz-root {{ color-scheme: light;
     --surface-1:#fcfcfb; --page:#f9f9f7; --text-primary:#0b0b0b;
     --text-secondary:#52514e; --muted:#898781; --grid:#e1e0d9;
-    --border:rgba(11,11,11,.10); --series-1:#2a78d6; }}
+    --border:rgba(11,11,11,.10); --series-1:#2a78d6; --orange:#eb6834; --neutral:#9a9891; }}
   @media (prefers-color-scheme: dark) {{
     :root:where(:not([data-theme="light"])) .viz-root {{ color-scheme: dark;
       --surface-1:#1a1a19; --page:#0d0d0d; --text-primary:#fff;
       --text-secondary:#c3c2b7; --muted:#898781; --grid:#2c2c2a;
-      --border:rgba(255,255,255,.10); --series-1:#3987e5; }} }}
+      --border:rgba(255,255,255,.10); --series-1:#3987e5; --orange:#f0793f; --neutral:#8a8880; }} }}
   * {{ box-sizing:border-box }} body {{ margin:0 }}
   .viz-root {{ font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
     background:var(--page); color:var(--text-primary); min-height:100vh; padding:24px }}
@@ -150,11 +249,42 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
     border-radius:10px; padding:16px; margin-bottom:16px }}
   .card h2 {{ font-size:14px; font-weight:600; margin:0 0 2px }}
   .note {{ font-size:12px; color:var(--text-secondary); margin:0 0 10px }}
+  .cap {{ font-size:10.5px; color:var(--muted); margin-top:8px }}
+  .grid2 {{ display:grid; grid-template-columns:1fr 1fr; gap:16px }}
+  @media (max-width:760px) {{ .grid2 {{ grid-template-columns:1fr }} }}
   .legend {{ display:flex; flex-wrap:wrap; gap:16px; font-size:12px;
     color:var(--text-secondary); margin-top:8px }}
   .legend span {{ display:inline-flex; align-items:center; gap:6px }}
   .sw {{ width:14px; height:14px; border-radius:4px; display:inline-block }}
-  #tree3d {{ width:100%; height:600px }} #gen {{ width:100%; height:280px }}
+  #tree3d {{ width:100%; height:600px }}
+  /* 01 barre per lobo */
+  .lrow {{ display:flex; align-items:center; gap:9px; margin:5px 0; font-size:12px }}
+  .lrow .llab {{ width:78px; text-align:right; color:var(--text-secondary); flex:none }}
+  .lrow .ltrack {{ flex:1; background:var(--grid); border-radius:5px; height:16px; overflow:hidden }}
+  .lrow .lfill {{ height:100%; border-radius:5px }}
+  .lrow .lval {{ width:40px; color:var(--text-secondary); flex:none; font-variant-numeric:tabular-nums }}
+  .lhatch {{ background-image:repeating-linear-gradient(45deg,var(--neutral),var(--neutral) 3px,transparent 3px,transparent 6px);
+    border:1px solid var(--neutral) }}
+  /* 03 barra misura/modello */
+  .split {{ display:flex; height:30px; border-radius:7px; overflow:hidden; border:1px solid var(--border); margin-top:4px }}
+  .split .seg {{ display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:600; color:#fff }}
+  /* 05 istogramma */
+  .hist {{ display:flex; align-items:flex-end; gap:4px; height:130px; padding-top:6px }}
+  .hist .hbar {{ flex:1; border-radius:4px 4px 0 0 }}
+  .xlab {{ display:flex; gap:4px; margin-top:3px }}
+  .xlab div {{ flex:1; text-align:center; font-size:8.5px; color:var(--muted) }}
+  /* 06 occlusione */
+  .plugwrap {{ display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap }}
+  .pba {{ text-align:center }}
+  .pcap {{ font-size:10px; color:var(--muted); margin-bottom:4px }}
+  .pbars {{ display:flex; gap:8px; align-items:flex-end; height:70px }}
+  .pcol {{ width:34px; display:flex; flex-direction:column; justify-content:flex-end; height:100% }}
+  .pbar {{ background:var(--series-1); border-radius:5px 5px 0 0 }}
+  .ptag {{ font-size:9px; color:var(--muted); margin-top:3px }}
+  .pnum {{ font-size:11px; color:var(--text-secondary); margin-top:5px }}
+  .pcallout {{ flex:1; min-width:180px; background:color-mix(in srgb,var(--orange) 10%,var(--surface-1));
+    border:1px solid var(--orange); border-radius:9px; padding:11px 13px }}
+  .pbig {{ font-size:22px; font-weight:700; color:var(--orange) }}
 </style></head><body><div class="viz-root"><div class="wrap">
 <h1>Flusso d'aria simulato sull'albero misurato</h1>
 <p class="sub">__NAME__ · rete di resistenze 1D risolta come albero serie/parallelo
@@ -168,13 +298,12 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
     <div class="v">{raw} <span class="u">cmH₂O·s/L</span></div>
     <div class="u">simulata · vie alte escluse</div></div>
   <div class="tile"><div class="k">Diametri misurati / imputati</div>
-    <div class="v">{flow['diametri_misurati']} <span class="u">/ {flow['diametri_imputati']}</span></div>
-    <div class="u">{frac_meas}% della dissipazione da misura</div></div>
+    <div class="v">{n_meas} <span class="u">/ {n_imp}</span></div>
+    <div class="u">{fm}% della dissipazione da misura</div></div>
   <div class="tile"><div class="k">Eterogeneità ventilazione (CV)</div>
     <div class="v">{cv}</div><div class="u">confronto tra casi/tempi, non assoluto</div></div>
   <div class="tile"><div class="k">Sensibilità Raw (Pedley on/off)</div>
-    <div class="v">{next((s['model_raw'] for s in sens if s['parametro']=='pedley' and s['valore']),raw)}
-      <span class="u">/ {next((s['model_raw'] for s in sens if s['parametro']=='pedley' and not s['valore']),'?')}</span></div>
+    <div class="v">{pedley_on} <span class="u">/ {pedley_off}</span></div>
     <div class="u">Poiseuille puro molto più basso</div></div>
 </div>
 <div class="card">
@@ -190,16 +319,47 @@ html = f"""<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
     <span><span class="sw" style="background:{DIV_HI}"></span> iper-ventilato</span>
   </div>
 </div>
-<div class="card">
-  <h2>Dove cade la pressione, per generazione</h2>
-  <p class="note">Quota % della dissipazione totale. Nel soggetto normale il grosso sta nelle vie di conduzione centrali e medie.</p>
-  <div id="gen"></div>
+<div class="grid2">
+  <div class="card">
+    <h2>Dove cade la pressione — per lobo</h2>
+    <p class="note">Quota % della dissipazione totale, vista anatomica. Nel soggetto
+       normale il grosso sta nelle vie centrali; i lobi seguono.</p>
+    {lobe_bars}
+    <p class="cap">*Periferia = completamento oltre le foglie (imputato), tratteggiata perché non è un lobo misurato.</p>
+  </div>
+  <div class="card">
+    <h2>Quanto è misura, quanto è modello</h2>
+    <p class="note">Quota della dissipazione che poggia su diametri realmente misurati
+       (half-max) contro quelli imputati per territorio.</p>
+    <div class="split">
+      <div class="seg" style="width:{fm}%;background:{SEQ[5]}">{fm:.0f}% misurato</div>
+      <div class="seg" style="width:{fi}%;background:var(--neutral);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.25),rgba(255,255,255,.25) 3px,transparent 3px,transparent 7px)">{fi:.0f}% imputato</div>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:{SEQ[5]}"></span> da calibro half-max ({n_meas} rami)</span>
+      <span><span class="sw lhatch"></span> imputato per territorio ({n_imp} rami)</span>
+    </div>
+    <p class="cap">~metà del risultato dipende da un'assunzione: migliorare la segmentazione sposta la barra a sinistra.</p>
+  </div>
 </div>
-<div class="card">
-  <h2>Esperimento di occlusione (candidati plug)</h2>
-  <p class="note">{plug_txt}</p>
-  <p class="note">Nel modello un singolo plug periferico sposta poco la Raw globale; l'effetto è
-     regionale (territorio de-ventilato). Osservazione del modello, NON claim clinico validato.</p>
+<div class="grid2">
+  <div class="card">
+    <h2>Eterogeneità della ventilazione</h2>
+    <p class="note">La distribuzione che il singolo CV nasconde: {len(SV)} territori,
+       ventilazione specifica su scala log. Blu = ipo (&lt;1), arancio = iper (&gt;1).</p>
+    <div class="hist">{_hbars}</div>
+    <div class="xlab">{_hxlab}</div>
+    <div class="legend" style="margin-top:10px">
+      <span><span class="sw" style="background:{DIV_LO}"></span> ipo-ventilato (&lt;1)</span>
+      <span><span class="sw" style="background:{DIV_HI}"></span> iper-ventilato (&gt;1)</span>
+    </div>
+    <p class="cap">La coda a destra (pochi territori "iper") è ciò che gonfia il CV; resta
+       influenzata da imputazione/pruning — leggere come confronto, non in assoluto.</p>
+  </div>
+  <div class="card">
+    <h2>Esperimento di occlusione (candidati plug)</h2>
+    {plug_panel}
+  </div>
 </div>
 </div></div>
 <script>
@@ -211,20 +371,9 @@ Plotly.newPlot('tree3d', TR, {{
           bgcolor:'rgba(0,0,0,0)' }},
   paper_bgcolor:'rgba(0,0,0,0)',
 }}, {{displayModeBar:false, responsive:true}});
-const G = __GEN__;
-const gl = Object.keys(G), gv = gl.map(k=>G[k]);
-Plotly.newPlot('gen', [{{ type:'bar', x:gl, y:gv,
-  marker:{{color:'#2a78d6'}},
-  hovertemplate:'gen %{{x}} · %{{y:.1f}}%<extra></extra>' }}], {{
-  margin:{{l:44,r:10,t:8,b:36}},
-  xaxis:{{title:{{text:'generazione'}},color:'#898781'}},
-  yaxis:{{title:{{text:'% della caduta di pressione'}},color:'#898781',gridcolor:'rgba(137,135,129,.25)'}},
-  paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
-}}, {{displayModeBar:false, responsive:true}});
 </script></body></html>"""
 
 html = html.replace('__TRACES__', json.dumps(traces))
-html = html.replace('__GEN__', json.dumps(gen_share))
 name = os.environ.get('AIRWAYLAB_CASE', 'caso')
 html = html.replace('__NAME__', name)
 pl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
