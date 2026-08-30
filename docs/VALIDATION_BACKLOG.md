@@ -167,3 +167,104 @@ open.
     threshold (ties #12); (f) reference-standard study for anything claimed
     diagnostic (ties #11); (g) reproducible environment + per-endpoint
     regression tests (ties #15, #16).
+
+## F. Where measurement is actually lost (measured 2026-08-30, no phantom available)
+
+Sections A–E list what needs validating. This section adds **where the yield is
+lost today**, quantified on one real thin-slice case (0.744 x 0.744 x 0.700 mm,
+218 branches, external DL mask), so the items can be ranked by what they would
+recover rather than by how interesting they sound.
+
+A constraint shapes every item below: **a physical phantom is not available and
+is not expected to become available.** Item #4 (section A) requires one, and #20
+explicitly defers to it; both stay blocked. The items here are therefore designed
+to be answerable *in silico* or by self-reference on data already in hand — which
+is legitimate, because the resolution floor is declared as a **processing** bound,
+not a physical one, and a processing bound can be characterised by simulating the
+processing. What such work cannot deliver is absolute metrological accuracy
+against a traceable standard; that claim stays out of reach and must not be made.
+
+27. **Resolution floor is a guess, and it is the single largest loss** *(open)* —
+    `VOXELS_FLOOR = 3.0` in `qc_params.py` was chosen a priori; the README already
+    calls it "a heuristic processing bound, not a validated physical resolution
+    limit". Measured cost on the reference case: 63/218 branches (29%) carry a
+    reportable caliber. The demoted branches sit **just** under the bound — median
+    `d_maschera/floor` = 0.70, and 58% of them are above two thirds of it — the 80
+    branches a 2-voxel bound would recover, taking 143/218 (66%) reportable. That is the
+    prize, and it is currently being paid on an unverified number: the floor may
+    be discarding real measurements, or may be correct, and nothing in the
+    codebase can currently tell which.
+
+    Two routes that need no phantom:
+
+    (a) **Extend the existing digital phantom into a calibration sweep.**
+    `make_tube()` in `tests/test_section.py` already builds a tube with known
+    lumen and wall in a parenchymal block, but as an *ideal step edge*: no PSF
+    blur, no noise. Adding a PSF convolution and correlated noise, then sweeping
+    diameter down towards one voxel across spacings and simulated kernels, yields
+    the bias/variance curve of the half-max estimator and the caliber at which it
+    breaks. That curve **is** the floor, measured rather than assumed, and it runs
+    in CI at zero cost. Its limit must be stated: it characterises the estimator
+    on a synthetic edge, not the scanner.
+
+    (b) **Downsampling self-reference on real anatomy.** Take a thin-slice case,
+    resample it to 1.0 / 1.25 / 1.5 / 2.0 mm, re-measure the same branches and
+    compare against the thin-slice measurement as reference. This gives the
+    caliber at which coarsening destroys agreement, on real airways, with no
+    ground truth needed beyond the finest acquisition available. It measures
+    degradation, not absolute accuracy — which is exactly what a floor is about.
+
+28. **Below ~3.7 mm caliber the wall value cannot carry information** *(open)* —
+    `parete_oltre_cap_pct` has median **95%** and max 100% on the reference case.
+    This is not pathology, it is arithmetic. The cap is `0.18*d + 0.6` clipped to
+    [1.0, 3.2] mm (`lumen.py`), while the thinnest wall the FWHM ever produced on
+    this case is **1.26 mm** — near the blur width at this voxel size. For any
+    airway below roughly 3.7 mm the cap therefore sits *below* the smallest value
+    the method can return, so every sector exceeds it by construction. Two
+    consequences: (a) the over-cap flag currently reports the resolution limit
+    while reading as a physiological outlier; (b) the caliber channel is gated by
+    a floor but the **wall channel is not**, so wall values are still published
+    where they are uninformative. A wall-specific floor, derived from the same
+    sweep as #27, would make the two channels consistent — and would likely demote
+    a large share of the distal wall values now shipped with a cap flag.
+
+29. **The air-witness threshold is blind to caliber, and rejects the smallest
+    airways for a physical reason** *(open)* — measured on the reference case:
+
+    | class | median `d_maschera` | median `hu_lume` | median generation |
+    |---|---|---|---|
+    | `ok` | 2.80 mm | -990 HU | 5 |
+    | `no-lume` | **1.40 mm** | **-680 HU** | 9 |
+
+    The rejected branches are the smallest in the tree. A 1.40 mm lumen is about
+    two voxels across at this spacing, so partial-volume mixing with the wall
+    lifts measured lumen attenuation from about -1000 toward -680 HU. The fixed
+    `HU_AIR = -750` then fails them — while they *pass* the air-fraction criterion
+    (median 67% vs the 60% required), so the rejection rests on the median alone.
+    The gate is doing resolution physics and reporting it as "the mask invented an
+    airway". Since partial-volume contamination is predictable from caliber and
+    spacing, the threshold should be a function of both. This compounds #12: the
+    README already states these thresholds come from a single development case.
+
+30. **Half the wall sectors are discarded** *(open)* — median **47%** of sectors
+    valid, and 114/218 branches below 50%. Excluding sectors where the wall abuts
+    vessels or mediastinum is correct and is documented as part of the method, but
+    it halves the sample on every branch and inflates the variance of every
+    wall-derived index (Pi10, WA%). The vessel mask is already produced by the
+    same backend run; using it to separate "abuts a vessel" from "genuinely not
+    measurable" would recover part of the sample without touching any threshold.
+
+31. **FWHM is the wrong estimator where it matters most** *(open; long-horizon)* —
+    items #28 and the kernel dependence documented in the README share one cause:
+    FWHM overestimates thin walls near the resolution limit, and its bias moves
+    with the reconstruction kernel. Integral-based and PSF-modelling estimators
+    exist precisely for this regime. Replacing or complementing FWHM would attack
+    the thin-wall bias and the kernel sensitivity together, and would make #28's
+    floor less punitive. This is the most expensive item here and should follow
+    #27, whose sweep provides the comparison harness needed to show any
+    replacement is actually better.
+
+**Suggested order.** #27 first: it is cheap, it runs in CI, and until the floor is
+characterised every other yield number is measured against an unverified bound.
+Then #28 and #29, both small changes with a clear mechanism and an immediate
+effect on what gets published. Then #30. #31 last, gated on #27.

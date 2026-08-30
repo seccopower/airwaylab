@@ -19,6 +19,14 @@
   controllo segnala solo disallineamenti OSSERVATI: se un'intestazione non e'
   leggibile non blocca.
 - **185 test** (da 162).
+- **`VALIDATION_BACKLOG` sezione F: dove la resa si perde davvero.** Quattro
+  perdite quantificate su un caso reale sottile (218 rami) invece che elencate
+  per plausibilita': il floor di risoluzione (#27, 29% -> 66% potenziale), la
+  parete non informativa sotto ~3.7 mm (#28), l'air-witness cieco al calibro
+  (#29), meta' dei settori di parete scartati (#30), piu' la sostituzione della
+  FWHM (#31). Vincolo esplicito: nessun fantoccio fisico disponibile, quindi
+  ogni item e' progettato per essere risolvibile in silico o per auto-riferimento
+  sui dati gia' in mano.
 - **README: sezione sul kernel di ricostruzione.** Densitometria e morfometria
   delle vie aeree vogliono kernel opposti (il rumore di un kernel sharp spinge
   parenchima normale sotto la soglia dei -950 HU e gonfia il LAA-950; un kernel
