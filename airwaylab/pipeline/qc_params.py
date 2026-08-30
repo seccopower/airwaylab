@@ -5,7 +5,7 @@ centerline attenuation <= -750 HU and at least 60% of sampled core points
 < -600 HU. These thresholds have not been validated across acquisition
 protocols or airway pathology and are provisional QC flags (ROC analysis on
 annotated cases is part of the open validation program, see
-docs/REVIEW_BACKLOG.md). The two criteria are partially redundant by design:
+docs/VALIDATION_BACKLOG.md). The two criteria are partially redundant by design:
 the median guards the central tendency, the fraction guards against bimodal
 profiles (e.g. a branch half-filled with secretions).
 

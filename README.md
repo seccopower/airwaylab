@@ -1,6 +1,6 @@
 # AirwayLab
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21963989.svg)](https://doi.org/10.5281/zenodo.21963989)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21963988.svg)](https://doi.org/10.5281/zenodo.21963988)
 
 **Transparent quantitative CT analysis of the airways.**
 
@@ -69,7 +69,7 @@ the exclusion list is exportable as part of the study audit trail.
 *Core* endpoints are the candidates for metrological validation (phantom +
 reader studies, in progress); *exploratory* indices are research hypotheses and
 must not be interpreted as validated measurements. See
-[`docs/REVIEW_BACKLOG.md`](docs/REVIEW_BACKLOG.md) for the open validation
+[`docs/VALIDATION_BACKLOG.md`](docs/VALIDATION_BACKLOG.md) for the open validation
 program.
 
 ## Install
@@ -152,7 +152,8 @@ Recommended acquisitions: volumetric inspiratory chest CT, slice thickness
 ## Method, limits, honesty
 
 The full measurement protocol (parameters, QC criteria and declared limits) is
-in [`docs/`](docs/). The short version of the limits:
+in [`docs/`](docs/); the background literature is listed with DOIs in
+[`docs/BIBLIOGRAPHY.md`](docs/BIBLIOGRAPHY.md). The short version of the limits:
 
 - Threshold-based growing does not reach beyond the ~8th–12th generation;
   branch counts and territories depend on segmentation depth. The `--mask`
@@ -191,7 +192,7 @@ checks lumen-diameter recovery, wall measurement, and oblique-cut flagging.
 Until the methods paper is out, please cite the archived release:
 
 > Novali, M. (2026). *AirwayLab: transparent quantitative CT analysis of the
-> airways* (v0.24.0). Zenodo. https://doi.org/10.5281/zenodo.21963989
+> airways* (v1.1.0). Zenodo. https://doi.org/10.5281/zenodo.21963988
 
 Or use the "Cite this repository" button (from `CITATION.cff`).
 

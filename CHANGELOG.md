@@ -187,7 +187,7 @@ August 2026), condensed:
   (`hu_lume`, `aria_pct`, `d_maschera_mm`, `qc_misura`) in the CSV; tests for
   recentering, spline de-inflation and witness thresholds.
 - **v0.23** — response to second adversarial review (25 points, triaged in
-  `docs/REVIEW_BACKLOG.md`): caliber now measured on ALL core sections at
+  `docs/VALIDATION_BACKLOG.md`): caliber now measured on ALL core sections at
   ~1 mm spacing with attempted/accepted counts (removes the representative-
   section bias that discarded stenoses/dilatations); the physiological wall
   cap no longer censors measurements — it is a QC flag (% sectors above cap
