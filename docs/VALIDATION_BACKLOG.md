@@ -229,7 +229,8 @@ against a traceable standard; that claim stays out of reach and must not be made
     a large share of the distal wall values now shipped with a cap flag.
 
 29. **The air-witness threshold is blind to caliber, and rejects the smallest
-    airways for a physical reason** *(open)* — measured on the reference case:
+    airways for a physical reason** *(addressed; ROC calibration open)* — measured
+    on the reference case:
 
     | class | median `d_maschera` | median `hu_lume` | median generation |
     |---|---|---|---|
@@ -245,6 +246,23 @@ against a traceable standard; that claim stays out of reach and must not be made
     airway". Since partial-volume contamination is predictable from caliber and
     spacing, the threshold should be a function of both. This compounds #12: the
     README already states these thresholds come from a single development case.
+
+    **Shipped.** The median criterion is now corrected for partial volume: a lumen
+    of diameter *d* blurred by sigma = `PVE_SIGMA_VOXELS` x effective spacing reads
+    at its centre `HU_WALL + (HU_LUMEN_AIR - HU_WALL) * erf(d / (2*sigma*sqrt2))`,
+    and the threshold follows that curve plus a noise margin — bounded so it is
+    never stricter than the historical `HU_AIR` (large airways unchanged) and never
+    warmer than `HU_AIR_CEILING`. The effective spacing is taken from the branch's
+    own orientation-aware floor (`floor / VOXELS_FLOOR`), so an oblique branch on
+    thick slices gets the tolerance its floor already concedes. The per-branch
+    threshold is exported as `soglia_aria_hu` so every decision is auditable.
+
+    Measured effect: 9 of the 17 rejected branches recovered. Of the 8 that stay
+    out, 1 remains too warm for the model and 7 fail the air-FRACTION criterion,
+    deliberately left uncorrected — it now does most of the rejecting, which is the
+    intended conservative outcome. **Still open:** the sigma factor depends on
+    kernel and reconstruction and is *not* calibrated; it needs the ROC work on
+    annotated cases (ties #12), and the sweep of #27 would constrain it directly.
 
 30. **Half the wall sectors are discarded** *(open)* — median **47%** of sectors
     valid, and 114/218 branches below 50%. Excluding sectors where the wall abuts

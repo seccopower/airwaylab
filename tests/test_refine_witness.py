@@ -225,7 +225,7 @@ def test_split_reportable_invariant_and_csv_cardinality():
             else:
                 assert clin is None and raw == v
 
-    assert len(CSV_COLUMNS) == 32            # +qc_note +8 metriche di maschera
+    assert len(CSV_COLUMNS) == 33            # +qc_note +8 metriche di maschera +soglia_aria_hu
     for col in ('qc_note', 'd_maschera_eq_mm', 'd_maschera_min_mm',
                 'd_maschera_maj_mm', 'aspect_mask', 'ct_mask_ratio',
                 'overshoot_frac', 'n_sez_paired_diam', 'n_sez_paired_radial'):
@@ -287,3 +287,65 @@ def test_curved_phantom_arc_length():
     assert chord < 0.95 * arc_true             # il chord NON e' la verita'
     err = abs(len_spl - arc_true) / arc_true
     assert err < 0.04, f'arc {arc_true:.1f} vs spline {len_spl:.1f} ({err:.1%})'
+
+
+# ---------------------------------------------------------------- backlog #29
+# Soglia d'aria dipendente dal calibro: il volume parziale alza l'attenuazione
+# misurata nei lumi piccoli, e una soglia fissa li boccia per fisica invece che
+# per anatomia. Caso reale che ha motivato la modifica: rami scartati con
+# d_maschera mediana 1.40 mm e hu_lume -680, contro 2.80 mm / -990 degli accettati.
+
+def test_soglia_aria_torna_al_gate_storico_senza_calibro():
+    """Chiamanti che non passano calibro/spacing devono vedere l'invariato."""
+    from qc_params import air_threshold_hu, HU_AIR
+    assert air_threshold_hu() == HU_AIR
+    assert air_threshold_hu(None, 0.7) == HU_AIR
+    assert air_threshold_hu(1.4, None) == HU_AIR
+    assert air_threshold_hu(0.0, 0.7) == HU_AIR
+    assert air_threshold_hu(1.4, -1.0) == HU_AIR
+    assert air_threshold_hu('x', 'y') == HU_AIR
+
+
+def test_soglia_aria_rami_grandi_invariati():
+    """Sopra il regime del volume parziale la soglia resta quella storica."""
+    from qc_params import air_threshold_hu, HU_AIR
+    for d in (5.0, 10.0, 20.0):
+        assert air_threshold_hu(d, 0.744) == HU_AIR
+
+
+def test_soglia_aria_monotona_e_limitata():
+    from qc_params import air_threshold_hu, HU_AIR, HU_AIR_CEILING
+    ds = [0.2, 0.5, 1.0, 1.4, 2.0, 3.0, 5.0, 10.0]
+    thr = [air_threshold_hu(d, 0.744) for d in ds]
+    assert all(a >= b for a, b in zip(thr, thr[1:]))       # non crescente in d
+    assert all(HU_AIR <= t <= HU_AIR_CEILING for t in thr)  # dentro i due limiti
+
+
+def test_caso_reale_ramo_piccolo_ora_accettato():
+    """d=1.40 mm a spacing 0.744: -680 HU e' cio' che il volume parziale
+    predice per un lume d'aria autentico, non un bronco inventato."""
+    import numpy as np
+    from qc_params import air_witness, air_threshold_hu
+    hu = np.full(100, -680.0)
+    assert air_witness(hu) is False                       # gate fisso: bocciava
+    assert air_witness(hu, 1.40, 0.744) is True           # corretto: accetta
+    assert air_threshold_hu(1.40, 0.744) > -750.0
+
+
+def test_gate_non_si_indebolisce_oltre_la_fisica():
+    """Il punto che tiene in piedi la difesa: un lume piu' caldo di quanto il
+    volume parziale possa spiegare deve continuare a fallire, altrimenti una
+    maschera generosa tornerebbe a inventare vie aeree."""
+    import numpy as np
+    from qc_params import air_witness
+    for hu_val in (-300.0, -100.0, 0.0, 50.0):
+        assert air_witness(np.full(100, hu_val), 1.40, 0.744) is False
+    # tessuto pieno con calibro minuscolo: nemmeno il tetto lo salva
+    assert air_witness(np.full(100, -350.0), 0.3, 0.744) is False
+
+
+def test_soglia_aria_si_allenta_con_voxel_piu_grossi():
+    """Stesso calibro, spacing piu' grosso -> piu' contaminazione -> soglia piu'
+    permissiva. E' la dipendenza dall'orientamento gia' presente nel floor."""
+    from qc_params import air_threshold_hu
+    assert air_threshold_hu(2.0, 1.25) > air_threshold_hu(2.0, 0.7)

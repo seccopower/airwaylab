@@ -34,8 +34,9 @@ import numpy as np
 import SimpleITK as sitk
 from scipy import ndimage
 
-from qc_params import (air_witness, branch_floor_mm, escape_decision,
-                       resolution_floor_mm, write_branches_csv)
+from qc_params import (VOXELS_FLOOR, air_threshold_hu, air_witness,
+                       branch_floor_mm, escape_decision, resolution_floor_mm,
+                       write_branches_csv)
 
 tree = json.load(open('out/tree_measured.json'))
 ISO = tree['iso']
@@ -78,7 +79,15 @@ for b in tree['branches']:
     D_MIN = branch_floor_mm(ISO, NATIVE, core)
     b['floor_mm'] = round(D_MIN, 2)
 
-    if not air_witness(hu):
+    # Soglia d'aria corretta per volume parziale (backlog #29). Lo spacing
+    # efficace e' gia' dentro il floor — che e' VOXELS_FLOOR volte lo spacing
+    # nativo proiettato nel piano della sezione — quindi si ricava da li' invece
+    # di reintrodurre l'orientamento: un ramo obliquo su fette spesse ottiene la
+    # stessa tolleranza che il suo floor gia' riconosce.
+    s_eff = D_MIN / VOXELS_FLOOR if VOXELS_FLOOR else None
+    b['soglia_aria_hu'] = round(air_threshold_hu(d_mask, s_eff), 1)
+
+    if not air_witness(hu, d_mask, s_eff):
         b['qc'] = 'no-lume'
         tier = 2
     elif d_mask < D_MIN:

@@ -18,7 +18,15 @@
   spacing devono combaciare con la CT corrente, altrimenti si rigenera. Il
   controllo segnala solo disallineamenti OSSERVATI: se un'intestazione non e'
   leggibile non blocca.
-- **185 test** (da 162).
+- **Air-witness dipendente dal calibro** (backlog #29). La soglia fissa
+  `HU_AIR = -750` era cieca al calibro: il volume parziale alza l'attenuazione
+  misurata nei lumi piccoli, e i rami scartati come `no-lume` erano i piu'
+  piccoli dell'albero (d_maschera mediana 1.40 mm, hu_lume -680, contro 2.80 mm
+  e -990 degli accettati). Il criterio sulla mediana ora segue la curva del
+  volume parziale, limitato in modo da non essere mai piu' severo del gate
+  storico ne' piu' permissivo di un tetto. Nuova colonna `soglia_aria_hu` con la
+  soglia effettiva per ramo. Effetto misurato: 9 rami su 17 recuperati.
+- **191 test** (da 162).
 - **`VALIDATION_BACKLOG` sezione F: dove la resa si perde davvero.** Quattro
   perdite quantificate su un caso reale sottile (218 rami) invece che elencate
   per plausibilita': il floor di risoluzione (#27, 29% -> 66% potenziale), la

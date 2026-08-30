@@ -12,11 +12,48 @@ profiles (e.g. a branch half-filled with secretions).
 This module has no side effects so tests exercise the SAME logic and
 constants the pipeline uses.
 """
+import math
+
 import numpy as np
 
 HU_AIR = -750.0    # median HU of the core centerline must be below this
 HU_SOFT = -600.0   # ...and at least AIR_FRAC of core points below this
 AIR_FRAC = 0.60
+
+# --- partial-volume correction of the median criterion (backlog #29) ---
+# A fixed HU_AIR is blind to caliber, and partial-volume mixing guarantees that
+# a genuine small airway reads warmer than a large one at the same resolution.
+# Measured on a real thin-slice case: branches rejected as 'no-lume' had median
+# mask diameter 1.40 mm and median lumen attenuation -680 HU, against 2.80 mm
+# and -990 HU for the accepted ones — i.e. the rejected set was the SMALLEST in
+# the tree, failing on physics rather than on anatomy.
+#
+# Model: a lumen of diameter d surrounded by soft tissue, blurred by a Gaussian
+# of sigma = PVE_SIGMA_VOXELS * spacing, reads at its centre
+#     HU_WALL + (HU_LUMEN_AIR - HU_WALL) * erf(d / (2*sigma*sqrt(2)))
+# The threshold follows that curve plus a noise margin, so it relaxes by exactly
+# what partial volume can explain and NOT beyond: a lumen warmer than the model
+# predicts still fails, which is what keeps a generous mask from inventing
+# airways. Bounded on both sides — never stricter than HU_AIR (large airways
+# keep the historical gate) and never above HU_AIR_CEILING (nothing that warm is
+# air, whatever its size).
+#
+# Measured effect on that case: 9 of the 17 rejected branches are recovered. Of
+# the 8 that stay out, 1 is still too warm for the model and 7 fail the
+# air-FRACTION criterion, which is left uncorrected on purpose (its median over
+# the group was 67% against the 60% required, but it binds on 7 of 17 branches
+# individually). That criterion therefore now does most of the rejecting, which
+# is the intended conservative outcome: the gate still discriminates.
+#
+# PROVISIONAL, like the rest of this module: the sigma factor depends on kernel
+# and reconstruction and is NOT calibrated. Backlog #29 tracks the ROC work; the
+# per-branch effective threshold is exported (`soglia_aria_hu`) so every
+# accept/reject decision can be audited against the model that produced it.
+HU_LUMEN_AIR = -1000.0    # pure air in the lumen
+HU_WALL_SOFT = 0.0        # soft tissue surrounding it
+PVE_SIGMA_VOXELS = 1.0    # blur sigma, in units of the effective spacing
+AIR_MARGIN_HU = 150.0     # tolerance for noise and biological variation
+HU_AIR_CEILING = -400.0   # hard ceiling: never more permissive than this
 ESCAPE_K = 1.5     # half-max escaped if d_mean > K * d_mask + C
 ESCAPE_C = 0.5
 VOXELS_FLOOR = 3.0
@@ -52,18 +89,52 @@ CSV_COLUMNS = [
     # queste sono OMOGENEE col half-max (eq) e la dimensione minima nel piano.
     'd_maschera_eq_mm', 'd_maschera_min_mm', 'd_maschera_maj_mm',
     'aspect_mask', 'ct_mask_ratio', 'overshoot_frac',
+    'soglia_aria_hu',
     'n_sez_paired_diam', 'n_sez_paired_radial',
     'diametro_raw_nonreportable', 'diametro_min_raw_nonreportable',
     'parete_raw_nonreportable', 'wa_raw_nonreportable',
 ]
 
 
-def air_witness(hu):
-    """True if the centerline HU profile shows a real air lumen."""
+def air_threshold_hu(d_mm=None, spacing_mm=None):
+    """Median-attenuation threshold expected for a lumen of diameter `d_mm`
+    sampled at `spacing_mm` (see the partial-volume note at the top).
+
+    Returns HU_AIR — the historical fixed gate — whenever the caliber or the
+    spacing is unknown or non-positive, so callers that cannot supply them keep
+    the previous behaviour exactly.
+
+    Pure. Monotone in d: smaller airways get a warmer (more permissive)
+    threshold, large ones converge back onto HU_AIR."""
+    try:
+        d = float(d_mm)
+        s = float(spacing_mm)
+    except (TypeError, ValueError):
+        return HU_AIR
+    if not (d > 0 and s > 0):
+        return HU_AIR
+    sigma = PVE_SIGMA_VOXELS * s
+    frac_air = math.erf(d / (2.0 * sigma * math.sqrt(2.0)))
+    expected = HU_WALL_SOFT + (HU_LUMEN_AIR - HU_WALL_SOFT) * frac_air
+    thr = expected + AIR_MARGIN_HU
+    thr = min(thr, HU_AIR_CEILING)   # mai piu' permissivo del tetto
+    return max(thr, HU_AIR)          # mai piu' severo del gate storico
+
+
+def air_witness(hu, d_mm=None, spacing_mm=None):
+    """True if the centerline HU profile shows a real air lumen.
+
+    With `d_mm` and `spacing_mm` the median criterion is corrected for partial
+    volume; without them it falls back to the fixed HU_AIR gate. The
+    air-FRACTION criterion is deliberately left uncorrected: partial volume is
+    a statement about the CENTRAL tendency of the profile, not about how many
+    samples clear a second, warmer cut, and relaxing both would weaken the gate
+    beyond what the physics justifies."""
     hu = np.asarray(hu, dtype=float)
     if hu.size == 0:
         return False
-    return bool((np.median(hu) <= HU_AIR)
+    thr = air_threshold_hu(d_mm, spacing_mm)
+    return bool((np.median(hu) <= thr)
                 and (float((hu < HU_SOFT).mean()) >= AIR_FRAC))
 
 
@@ -194,6 +265,7 @@ def csv_row(b):
             b.get('floor_mm'),
             b.get('d_mask_eq'), b.get('d_mask_min'), b.get('d_mask_maj'),
             b.get('aspect_mask'), b.get('ct_mask_ratio'), b.get('overshoot_frac'),
+            b.get('soglia_aria_hu'),
             b.get('n_sez_paired_diam'), b.get('n_sez_paired_radial'),
             b.get('d_mean_raw'), b.get('d_min_raw'),
             b.get('wall_raw'), b.get('wa_raw')]
