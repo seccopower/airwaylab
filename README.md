@@ -149,6 +149,37 @@ work directory with NIfTI masks you can load in 3D Slicer on top of the CT.
 Recommended acquisitions: volumetric inspiratory chest CT, slice thickness
 ≤ 1.25 mm, identical scanner/protocol/kernel for longitudinal comparisons.
 
+Slice thickness is not a detail: the resolution floor is three voxels, so a
+1.25 mm reconstruction floors caliber at ~3.75 mm and a 0.7 mm one at ~2.2 mm.
+On two real cases that is the difference between 9% and 29% of branches carrying
+a reportable caliber — same software, same pipeline, only the reconstruction
+changed.
+
+### Reconstruction kernel
+
+The kernel is the convolution filter applied during reconstruction, not a
+post-processing step: the same raw acquisition filtered differently yields
+different images. Sharp kernels (e.g. Siemens B60s, GE BONE/LUNG) sharpen edges
+and amplify noise; smooth kernels (e.g. Siemens B30f, GE STANDARD) suppress
+noise and blur edges.
+
+Noise is not symmetric around a threshold, which is why this matters here:
+
+- **Parenchyma wants a smooth kernel.** LAA-950 counts voxels below −950 HU. A
+  sharp kernel widens the density histogram, so normal parenchyma sitting near
+  −900 HU crosses the threshold on noise alone and LAA-950 rises with no change
+  in the lung. Perc15 shifts the same way.
+- **Airway walls want a sharp kernel.** A smooth kernel blurs the wall boundary,
+  and FWHM then overestimates thickness — worst on the thin distal walls that
+  are already near the resolution limit. Pi10 and WA% inherit this.
+
+No single kernel is right for both. The clean solution is to reconstruct the
+same acquisition twice — no extra dose, it is only recomputation — and read
+parenchyma off the smooth series and airways off the sharp one. Failing that,
+fix one kernel for the whole cohort and never compare across kernels: a
+difference in LAA-950 between two kernels measures the reconstruction, not the
+lung. The kernel is recorded in DICOM tag (0018,1210) `ConvolutionKernel`.
+
 ## Method, limits, honesty
 
 The full measurement protocol (parameters, QC criteria and declared limits) is
@@ -164,7 +195,9 @@ in [`docs/`](docs/); the background literature is listed with DOIs in
 - FWHM wall thickness overestimates thin walls near the resolution limit; the
   shape of the wall/generation curve is informative, distal absolute values are
   upper bounds.
-- LAA-950 is strongly kernel-dependent; compare like with like.
+- Densitometry and airway morphometry want opposite reconstruction kernels,
+  and LAA-950 is strongly kernel-dependent: see
+  [Reconstruction kernel](#reconstruction-kernel).
 - All values are comparable across patients **only** at equal CT protocol and
   equal AirwayLab version; process a whole cohort with one version.
 

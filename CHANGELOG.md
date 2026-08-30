@@ -19,6 +19,12 @@
   controllo segnala solo disallineamenti OSSERVATI: se un'intestazione non e'
   leggibile non blocca.
 - **185 test** (da 162).
+- **README: sezione sul kernel di ricostruzione.** Densitometria e morfometria
+  delle vie aeree vogliono kernel opposti (il rumore di un kernel sharp spinge
+  parenchima normale sotto la soglia dei -950 HU e gonfia il LAA-950; un kernel
+  morbido sfuma il bordo di parete e fa sovrastimare la FWHM). Documentata la
+  soluzione pulita — ricostruire due volte la stessa acquisizione — e reso
+  esplicito il peso dello spessore di strato sul floor di risoluzione.
 
 ## 1.1.0 — exploratory descriptors + audit-driven honesty hardening
 
