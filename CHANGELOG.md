@@ -1,5 +1,25 @@
 # Changelog
 
+## Non rilasciato
+
+- **Guardia di geometria in `anonymize.py`** (`geometry_qc_core.py`, nucleo puro).
+  Un CD paziente conteneva ogni fetta duplicata — 834 file su 417 posizioni z,
+  pixel identici, solo il SOPInstanceUID diverso: il reader ordinava le fette,
+  meta' delle differenze consecutive valeva 0 e lo spacing crollava a 0.08 mm
+  contro il millimetro dichiarato. Il volume veniva scritto senza un errore e la
+  pipeline avrebbe misurato calibri in mm sbagliati di un fattore ~12. Ora le
+  posizioni ripetute sono rilevate e deduplicate (riordinando per z), e la
+  geometria del volume prodotto e' verificata: spacing, copertura e coerenza fra
+  spessore DICHIARATO e MISURATO. Soglie larghe, ancorate all'acquisizione.
+- **Cache delle maschere verificata per griglia** (`airway_backend.py`). Il salto
+  di TotalSegmentator si basava sulla sola presenza dei file: maschere di una
+  conversione precedente venivano riusate su una CT diversa e risultavano vuote,
+  con l'errore che emergeva solo piu' a valle in `extmask.py`. Ora dimensioni e
+  spacing devono combaciare con la CT corrente, altrimenti si rigenera. Il
+  controllo segnala solo disallineamenti OSSERVATI: se un'intestazione non e'
+  leggibile non blocca.
+- **185 test** (da 162).
+
 ## 1.1.0 — exploratory descriptors + audit-driven honesty hardening
 
 Additive on the 1.0.0 baseline (no breaking changes to the caliber/wall

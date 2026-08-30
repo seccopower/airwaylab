@@ -22,6 +22,8 @@ import sys
 
 import SimpleITK as sitk
 
+from geometry_qc_core import duplicate_positions, geometry_banner
+
 SKIP_DIRS = {'express', 'ihe_pdi', 'reports', 'locale', 'bin', 'config', 'help'}
 
 # parole nella descrizione o nell'ImageType che indicano una serie NON adatta
@@ -31,13 +33,14 @@ BAD_DESC = ('mip', 'scout', 'topogram', 'topogramma', 'localizer', 'localiser',
 BAD_IMAGETYPE = ('mip', 'projection', 'localizer', 'csa mpr', 'reformatted', 'vrt', 'ssd')
 
 MAX_OK_THICKNESS_MM = 3.0   # oltre: quantificazione inaffidabile
+UNKNOWN_THICKNESS_MM = 999.0  # sentinella di _parse_thickness: spessore non leggibile
 
 
 def _parse_thickness(t):
     try:
         return float(str(t).replace(',', '.'))
     except Exception:
-        return 999.0
+        return UNKNOWN_THICKNESS_MM
 
 
 def disqualify_reason(meta):
@@ -112,6 +115,24 @@ def describe(f):
     return (tag('0008|0060'), tag('0008|103e'), tag('0018|0050'), tag('0008|0008'))
 
 
+def _zpositions(files):
+    """Coordinata z (ImagePositionPatient) di ogni file, nell'ordine dato.
+
+    I file illeggibili prendono 0.0: non inventa una posizione, e il controllo a
+    valle vedra' comunque una geometria incoerente."""
+    r = sitk.ImageFileReader()
+    r.LoadPrivateTagsOff()
+    out = []
+    for f in files:
+        try:
+            r.SetFileName(f)
+            r.ReadImageInformation()
+            out.append(float(r.GetMetaData('0020|0032').split('\\')[2]))
+        except Exception:
+            out.append(0.0)
+    return out
+
+
 def main(src, dst, pick=None):
     series = find_series(src)
     if not series:
@@ -174,11 +195,35 @@ def main(src, dst, pick=None):
             zpos.append((z, f))
         zpos.sort()
         ordered = [f for _, f in zpos]
+
+    # Guardia di geometria. Un export DICOM difettoso puo' ripetere ogni fetta:
+    # il reader ordina, meta' delle differenze consecutive vale 0 e lo spacing
+    # calcolato crolla (caso reale: 0.08 mm contro 1 mm dichiarato). Va visto
+    # PRIMA di scrivere, altrimenti la pipeline misura mm sbagliati in silenzio.
+    zs = _zpositions(ordered)
+    dup = duplicate_positions(zs)
+    if dup['has_duplicates']:
+        # Una sola immagine per posizione, poi RIORDINO PER z: con i duplicati
+        # l'ordine del reader non e' monotono, e tenere il primo di ogni gruppo
+        # lascerebbe una sequenza sfalsata da cui il reader ricava ancora uno
+        # spacing sbagliato (misurato: 0.165 mm invece di 0.700).
+        best = {}
+        for z, f in zip(zs, ordered):
+            best.setdefault(round(z * 1000), (z, f))
+        ordered = [f for _, (z, f) in sorted(best.items())]
+
     reader.SetFileNames(ordered)
     img = reader.Execute()
     os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
     sitk.WriteImage(img, dst)
     print('salvato', dst, img.GetSize(), 'spacing', [round(s, 2) for s in img.GetSpacing()])
+
+    # tv e' la sentinella 999.0 quando lo spessore non e' leggibile: in quel caso
+    # non c'e' un valore dichiarato da confrontare, non un valore assurdo.
+    declared = None if tv >= UNKNOWN_THICKNESS_MM else tv
+    banner = geometry_banner(img.GetSize(), img.GetSpacing(), declared, dup=dup)
+    if banner:
+        print('\n' + banner + '\n')
 
 
 if __name__ == '__main__':

@@ -69,3 +69,32 @@ def test_backend_esplicito_non_disponibile_fallisce(tmp_path, monkeypatch):
     _fake_mask(str(seg / "lung_airways.nii.gz"))
     with pytest.raises(BackendError):
         ab.segment_airways("ct.nii.gz", str(seg), requested="aeropath_onnx")
+
+
+def _real_nifti(path, shape, spacing):
+    """NIfTI vero e minimo: serve una geometria leggibile, non dei dati."""
+    import numpy as np
+    import nibabel as nib
+    aff = np.diag(list(spacing) + [1.0])
+    nib.save(nib.Nifti1Image(np.zeros(shape, dtype='uint8'), aff), path)
+    return path
+
+
+def test_maschera_su_griglia_diversa_viene_rigenerata(tmp_path, monkeypatch):
+    """Caso reale: maschere di una conversione precedente (834 fette @ 0.082 mm)
+    riproposte su una CT corretta (417 @ 0.700). Vanno viste QUI, non a valle."""
+    ct = _real_nifti(str(tmp_path / "ct.nii.gz"), (4, 4, 417), (0.744, 0.744, 0.700))
+    mask = _real_nifti(str(tmp_path / "m.nii.gz"), (4, 4, 834), (0.744, 0.744, 0.082))
+    reason = ab._grid_mismatch(ct, mask)
+    assert reason and 'dimensioni' in reason
+
+
+def test_maschera_sulla_stessa_griglia_e_riusabile(tmp_path):
+    ct = _real_nifti(str(tmp_path / "ct.nii.gz"), (4, 4, 8), (0.744, 0.744, 0.700))
+    mask = _real_nifti(str(tmp_path / "m.nii.gz"), (4, 4, 8), (0.744, 0.744, 0.700))
+    assert ab._grid_mismatch(ct, mask) is None
+
+
+def test_geometria_non_verificabile_non_blocca(tmp_path):
+    """Intestazioni illeggibili: non si dichiara un disallineamento non osservato."""
+    assert ab._grid_mismatch("inesistente.nii.gz", str(_fake_mask(str(tmp_path / "m.nii.gz")))) is None

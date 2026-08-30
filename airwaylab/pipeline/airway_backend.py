@@ -20,6 +20,28 @@ import shutil
 import subprocess
 
 from airway_backend_core import BackendError, choose_backend  # noqa: F401
+from geometry_qc_core import grids_match
+
+
+def _grid_mismatch(ct, mask):
+    """Motivo per cui `mask` NON e' sulla griglia di `ct`, o None.
+
+    Legge le sole intestazioni (nibabel e' lazy: nessun voxel caricato).
+
+    Segnala SOLO un disallineamento osservato: se una delle due intestazioni non
+    e' leggibile la verifica non e' possibile e si restituisce None. "Non ho
+    potuto controllare" non e' "ho trovato un problema" — scartare maschere valide
+    perche' la CT non si apre peggiorerebbe le cose, e il guasto vero emerge
+    comunque a valle dal controllo di qualita' di extmask.py, con un messaggio
+    piu' preciso di quanto potremmo dare qui."""
+    try:
+        import nibabel as nib
+        a, b = nib.load(ct), nib.load(mask)
+        grids = ((a.shape[:3], a.header.get_zooms()[:3]),
+                 (b.shape[:3], b.header.get_zooms()[:3]))
+    except Exception:
+        return None
+    return grids_match(*grids[0], *grids[1])['reason']
 
 
 def _sha256(path, chunk=1 << 20):
@@ -54,12 +76,22 @@ class TotalSegmentatorBackend:
 
     def run(self, ct, segdir):
         airways = os.path.join(segdir, self.airways_name)
+        stale = None
         if os.path.exists(airways):
-            print(f"maschere gia' presenti in {segdir} — salto TotalSegmentator")
-            return airways
+            # La sola presenza del file non basta: una maschera calcolata su una
+            # griglia diversa e' inservibile e piu' avanti extmask.py la trova
+            # vuota. Meglio accorgersene qui e rigenerare.
+            stale = _grid_mismatch(ct, airways)
+            if not stale:
+                print(f"maschere gia' presenti in {segdir} — salto TotalSegmentator")
+                return airways
+            print(f"maschere presenti in {segdir} ma su una griglia diversa dalla "
+                  f"CT ({stale}) — le rigenero")
         exe = shutil.which("TotalSegmentator") or shutil.which("totalsegmentator")
         if not exe:
             raise BackendError(
+                ("maschere presenti ma inutilizzabili (" + stale + ") e "
+                 if stale else "") +
                 "TotalSegmentator non trovato nel PATH. Installalo, oppure fornisci "
                 "gia' le maschere in " + segdir + " (lung_airways/arteries/veins).")
         print(f"\n=== TotalSegmentator (task {self.task}) -> {segdir} ===")

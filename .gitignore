@@ -24,3 +24,10 @@ aeropath_models/
 # letteratura di riferimento: PDF degli editori, non redistribuibili.
 # I riferimenti (autore, titolo, DOI) sono versionati in docs/BIBLIOGRAPHY.md.
 papers*/
+
+# output di prova locali (dati derivati da TC del paziente: mai versionati)
+prova_out/
+*_routes.csv
+
+# configurazione locale degli strumenti di sviluppo
+.claude/
