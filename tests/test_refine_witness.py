@@ -225,7 +225,8 @@ def test_split_reportable_invariant_and_csv_cardinality():
             else:
                 assert clin is None and raw == v
 
-    assert len(CSV_COLUMNS) == 33            # +qc_note +8 metriche di maschera +soglia_aria_hu
+    assert len(CSV_COLUMNS) == 36            # +qc_note +8 metriche di maschera
+    #                                        +soglia_aria_hu (#29) +3 lettura parete (#28)
     for col in ('qc_note', 'd_maschera_eq_mm', 'd_maschera_min_mm',
                 'd_maschera_maj_mm', 'aspect_mask', 'ct_mask_ratio',
                 'overshoot_frac', 'n_sez_paired_diam', 'n_sez_paired_radial'):
@@ -349,3 +350,66 @@ def test_soglia_aria_si_allenta_con_voxel_piu_grossi():
     permissiva. E' la dipendenza dall'orientamento gia' presente nel floor."""
     from qc_params import air_threshold_hu
     assert air_threshold_hu(2.0, 1.25) > air_threshold_hu(2.0, 0.7)
+
+
+# ---------------------------------------------------------------- backlog #28
+# Leggibilita' della parete: sotto un certo calibro il tetto fisiologico sta
+# SOTTO il minimo che la FWHM puo' restituire, quindi la frazione oltre-tetto e'
+# strutturale e non fisiologica. Questi test fissano il comportamento del flag,
+# NON una censura: la demozione resta subordinata allo sweep del #27.
+
+def test_wall_floor_scala_con_lo_spacing():
+    from qc_params import wall_floor_mm, WALL_FLOOR_VOXELS
+    assert wall_floor_mm(0.744) == WALL_FLOOR_VOXELS * 0.744
+    assert wall_floor_mm(1.25) > wall_floor_mm(0.744)
+    for bad in (None, 0.0, -1.0, 'x'):
+        assert wall_floor_mm(bad) is None
+
+
+def test_wall_information_senza_spacing_non_afferma_nulla():
+    from qc_params import wall_information
+    wi = wall_information(1.45, 3.0, None)
+    assert wi == {'floor_mm': None, 'at_floor': None,
+                  'cap_below_floor': None, 'informative': None}
+
+
+def test_caso_reale_cap_sotto_floor_su_ramo_piccolo():
+    """d=3.0 mm -> cap 1.14 mm, sotto il floor di misura: l'oltre-tetto e'
+    strutturale, non ispessimento."""
+    from qc_params import wall_information, wall_floor_mm
+    wi = wall_information(1.45, 3.0, 0.744)
+    assert wi['cap_below_floor'] is True
+    assert wi['informative'] is False
+    assert wi['floor_mm'] == round(wall_floor_mm(0.744), 2)
+
+
+def test_ramo_grande_resta_informativo():
+    """d=15 mm -> cap 3.2 mm, ben sopra il floor; parete lontana dal floor."""
+    from qc_params import wall_information
+    wi = wall_information(2.73, 15.0, 0.744)
+    assert wi['cap_below_floor'] is False
+    assert wi['at_floor'] is False
+    assert wi['informative'] is True
+
+
+def test_parete_al_floor_e_indistinguibile():
+    from qc_params import wall_information, wall_floor_mm, WALL_AT_FLOOR_TOL
+    fl = wall_floor_mm(0.744)
+    assert wall_information(fl, 15.0, 0.744)['at_floor'] is True
+    assert wall_information(fl * WALL_AT_FLOOR_TOL, 15.0, 0.744)['at_floor'] is True
+    assert wall_information(fl * WALL_AT_FLOOR_TOL + 0.01, 15.0, 0.744)['at_floor'] is False
+
+
+def test_cap_esplicito_prevale_sul_calibro():
+    """Il chiamante puo' passare il tetto gia' calcolato da lumen.py."""
+    from qc_params import wall_information
+    assert wall_information(1.45, None, 0.744, cap_mm=3.2)['cap_below_floor'] is False
+    assert wall_information(1.45, None, 0.744, cap_mm=1.0)['cap_below_floor'] is True
+
+
+def test_wall_information_non_censura():
+    """Contratto esplicito: descrive, non cancella. Nessun valore viene toccato."""
+    from qc_params import wall_information
+    wi = wall_information(1.45, 3.0, 0.744)
+    assert set(wi) == {'floor_mm', 'at_floor', 'cap_below_floor', 'informative'}
+    assert 'wall' not in wi and 'wall_raw' not in wi

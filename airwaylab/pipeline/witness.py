@@ -36,7 +36,7 @@ from scipy import ndimage
 
 from qc_params import (VOXELS_FLOOR, air_threshold_hu, air_witness,
                        branch_floor_mm, escape_decision, resolution_floor_mm,
-                       write_branches_csv)
+                       wall_information, write_branches_csv)
 
 tree = json.load(open('out/tree_measured.json'))
 ISO = tree['iso']
@@ -86,6 +86,14 @@ for b in tree['branches']:
     # stessa tolleranza che il suo floor gia' riconosce.
     s_eff = D_MIN / VOXELS_FLOOR if VOXELS_FLOOR else None
     b['soglia_aria_hu'] = round(air_threshold_hu(d_mask, s_eff), 1)
+
+    # Leggibilita' della parete (backlog #28). NON demolisce: espone il floor di
+    # misura e dice quando la frazione oltre-tetto e' strutturale invece che
+    # fisiologica, cosi' un 95% smette di leggersi come ispessimento diffuso.
+    wi = wall_information(b.get('wall'), b.get('d_mean'), s_eff)
+    b['floor_parete_mm'] = wi['floor_mm']
+    b['parete_al_floor'] = wi['at_floor']
+    b['cap_sotto_floor'] = wi['cap_below_floor']
 
     if not air_witness(hu, d_mask, s_eff):
         b['qc'] = 'no-lume'

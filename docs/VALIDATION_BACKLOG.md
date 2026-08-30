@@ -214,7 +214,8 @@ against a traceable standard; that claim stays out of reach and must not be made
     ground truth needed beyond the finest acquisition available. It measures
     degradation, not absolute accuracy — which is exactly what a floor is about.
 
-28. **Below ~3.7 mm caliber the wall value cannot carry information** *(open)* —
+28. **Below ~3.7 mm caliber the wall value cannot carry information**
+    *(partly addressed: readability shipped, demotion deferred)* —
     `parete_oltre_cap_pct` has median **95%** and max 100% on the reference case.
     This is not pathology, it is arithmetic. The cap is `0.18*d + 0.6` clipped to
     [1.0, 3.2] mm (`lumen.py`), while the thinnest wall the FWHM ever produced on
@@ -227,6 +228,28 @@ against a traceable standard; that claim stays out of reach and must not be made
     where they are uninformative. A wall-specific floor, derived from the same
     sweep as #27, would make the two channels consistent — and would likely demote
     a large share of the distal wall values now shipped with a cap flag.
+
+    **Shipped: readability, not censorship.** `wall_information()` exposes a
+    per-branch wall measurement floor (`WALL_FLOOR_VOXELS` x effective spacing,
+    taken from the branch's own orientation-aware floor) and two flags —
+    `parete_al_floor` (the value is within `WALL_AT_FLOOR_TOL` of the floor, so
+    indistinguishable from any thinner wall) and `cap_sotto_floor` (the cap sits
+    below the floor, so the over-cap fraction is STRUCTURAL). A 95% over-cap
+    reading is now explainable instead of alarming. On the reference case, of the
+    60 branches with a measured wall: 75% have the cap below the floor, 88% sit at
+    the floor, and only 10% remain informative.
+
+    **The demotion is deliberately NOT shipped.** `WALL_FLOOR_VOXELS` is not
+    calibrated and the outcome is hypersensitive to it — on the reference case
+    1.5 voxels demote 0% of walls, 2.0 demote 62%, 2.355 demote 88%. Deleting 62%
+    of the wall values on a hand-picked constant would repeat exactly the defect
+    #12 objects to, and this item already subordinates the floor to the #27 sweep.
+    The machinery is in place: when the sweep fixes the value, demotion follows
+    `parete_al_floor` the way the caliber channel already follows its floor.
+
+    Corroborating observation worth recording: the measured walls cluster tightly
+    (q1 1.38, median 1.45, q3 1.57 mm across generations 4 to 18). Biology does not
+    compress that far over that range; saturation at the method floor does.
 
 29. **The air-witness threshold is blind to caliber, and rejects the smallest
     airways for a physical reason** *(addressed; ROC calibration open)* — measured

@@ -89,11 +89,82 @@ CSV_COLUMNS = [
     # queste sono OMOGENEE col half-max (eq) e la dimensione minima nel piano.
     'd_maschera_eq_mm', 'd_maschera_min_mm', 'd_maschera_maj_mm',
     'aspect_mask', 'ct_mask_ratio', 'overshoot_frac',
-    'soglia_aria_hu',
+    'soglia_aria_hu', 'floor_parete_mm', 'parete_al_floor', 'cap_sotto_floor',
     'n_sez_paired_diam', 'n_sez_paired_radial',
     'diametro_raw_nonreportable', 'diametro_min_raw_nonreportable',
     'parete_raw_nonreportable', 'wa_raw_nonreportable',
 ]
+
+
+# --- floor di misura della parete (backlog #28) ---
+# Il canale calibro e' protetto da un floor, quello parete no, e la conseguenza
+# si vede: sul caso di riferimento `parete_oltre_cap_pct` ha mediana 95% e
+# massimo 100%. Non e' patologia, e' aritmetica. Il tetto fisiologico e'
+# 0.18*d + 0.6 limitato a [1.0, 3.2] mm (lumen.py), mentre la parete piu' sottile
+# che la FWHM abbia mai restituito su quel caso e' 1.26 mm: sotto un certo
+# calibro il tetto sta SOTTO il minimo che il metodo puo' produrre, quindi ogni
+# settore lo supera per costruzione e il flag segnala il limite di risoluzione
+# leggendosi come un fuori-norma fisiologico.
+#
+# Corollario osservato: le pareti misurate si stringono attorno alla mediana
+# (q1 1.38, mediana 1.45, q3 1.57 mm su rami dalla generazione 4 alla 18) —
+# una compressione che la biologia non spiega e la saturazione al floor si'.
+#
+# NON CENSURA. Il floor qui e' esposto e usato per FLAG, non per demolire il
+# valore, per due ragioni: (1) WALL_FLOOR_VOXELS non e' calibrato e l'esito e'
+# ipersensibile alla sua scelta — sul caso di riferimento 1.5 voxel demoliscono
+# lo 0% delle pareti, 2.0 il 62%, 2.355 l'88%; (2) il backlog #28 subordina
+# esplicitamente il floor allo sweep del #27, che non esiste ancora. Demolire il
+# 62% dei valori su una costante scelta a mano ripeterebbe il difetto che il
+# backlog #12 contesta. Quando lo sweep fissera' il valore, la demozione si
+# attiva usando `wall_at_floor` come si usa gia' il floor del calibro.
+WALL_FLOOR_VOXELS = 2.0   # elemento di risoluzione efficace, PROVVISORIO
+WALL_AT_FLOOR_TOL = 1.15  # entro questo fattore dal floor = indistinguibile
+
+
+def wall_floor_mm(spacing_mm=None):
+    """Spessore di parete piu' sottile che la FWHM puo' distinguere dalla
+    sfocatura, a un dato spacing efficace. None se lo spacing e' ignoto."""
+    try:
+        s = float(spacing_mm)
+    except (TypeError, ValueError):
+        return None
+    if not s > 0:
+        return None
+    return WALL_FLOOR_VOXELS * s
+
+
+def wall_information(wall_mm=None, d_mm=None, spacing_mm=None, cap_mm=None):
+    """Quanta informazione puo' contenere una misura di parete a questa
+    risoluzione. Puro, nessuna censura: descrive, non cancella.
+
+    Ritorna {'floor_mm', 'at_floor', 'cap_below_floor', 'informative'}:
+      at_floor        il valore e' entro WALL_AT_FLOOR_TOL dal floor, quindi
+                      indistinguibile da qualunque parete piu' sottile;
+      cap_below_floor il tetto fisiologico sta sotto il floor, quindi la
+                      frazione oltre-tetto e' STRUTTURALE, non fisiologica;
+      informative     nessuna delle due: il valore puo' portare informazione.
+    Campi None quando l'ingrediente corrispondente manca."""
+    floor = wall_floor_mm(spacing_mm)
+    out = {'floor_mm': None if floor is None else round(floor, 2),
+           'at_floor': None, 'cap_below_floor': None, 'informative': None}
+    if floor is None:
+        return out
+    if cap_mm is None and d_mm is not None:
+        try:
+            cap_mm = min(max(0.18 * float(d_mm) + 0.6, 1.0), 3.2)
+        except (TypeError, ValueError):
+            cap_mm = None
+    if cap_mm is not None:
+        out['cap_below_floor'] = bool(float(cap_mm) < floor)
+    if wall_mm is not None:
+        try:
+            out['at_floor'] = bool(float(wall_mm) <= floor * WALL_AT_FLOOR_TOL)
+        except (TypeError, ValueError):
+            out['at_floor'] = None
+    if out['at_floor'] is not None or out['cap_below_floor'] is not None:
+        out['informative'] = not (bool(out['at_floor']) or bool(out['cap_below_floor']))
+    return out
 
 
 def air_threshold_hu(d_mm=None, spacing_mm=None):
@@ -265,7 +336,8 @@ def csv_row(b):
             b.get('floor_mm'),
             b.get('d_mask_eq'), b.get('d_mask_min'), b.get('d_mask_maj'),
             b.get('aspect_mask'), b.get('ct_mask_ratio'), b.get('overshoot_frac'),
-            b.get('soglia_aria_hu'),
+            b.get('soglia_aria_hu'), b.get('floor_parete_mm'),
+            b.get('parete_al_floor'), b.get('cap_sotto_floor'),
             b.get('n_sez_paired_diam'), b.get('n_sez_paired_radial'),
             b.get('d_mean_raw'), b.get('d_min_raw'),
             b.get('wall_raw'), b.get('wa_raw')]

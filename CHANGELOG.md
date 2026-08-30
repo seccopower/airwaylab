@@ -26,7 +26,15 @@
   volume parziale, limitato in modo da non essere mai piu' severo del gate
   storico ne' piu' permissivo di un tetto. Nuova colonna `soglia_aria_hu` con la
   soglia effettiva per ramo. Effetto misurato: 9 rami su 17 recuperati.
-- **191 test** (da 162).
+- **Leggibilita' della parete al limite di risoluzione** (backlog #28). Sotto un
+  certo calibro il tetto fisiologico sta SOTTO il minimo che la FWHM puo'
+  restituire, quindi `parete_oltre_cap_pct` al 95% segnalava il limite del metodo
+  leggendosi come ispessimento diffuso. Nuove colonne `floor_parete_mm`,
+  `parete_al_floor` e `cap_sotto_floor` rendono la distinzione esplicita.
+  **Nessuna censura**: la demozione resta subordinata allo sweep del #27, perche'
+  la costante non e' calibrata e l'esito e' ipersensibile (0%, 62% o 88% di
+  pareti demolite a seconda del valore scelto).
+- **198 test** (da 162).
 - **`VALIDATION_BACKLOG` sezione F: dove la resa si perde davvero.** Quattro
   perdite quantificate su un caso reale sottile (218 rami) invece che elencate
   per plausibilita': il floor di risoluzione (#27, 29% -> 66% potenziale), la
