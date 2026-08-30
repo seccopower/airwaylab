@@ -184,7 +184,8 @@ not a physical one, and a processing bound can be characterised by simulating th
 processing. What such work cannot deliver is absolute metrological accuracy
 against a traceable standard; that claim stays out of reach and must not be made.
 
-27. **Resolution floor is a guess, and it is the single largest loss** *(open)* —
+27. **Resolution floor is a guess** *(addressed: measured; the guess was in the
+    right place, and the expected prize was not there)* —
     `VOXELS_FLOOR = 3.0` in `qc_params.py` was chosen a priori; the README already
     calls it "a heuristic processing bound, not a validated physical resolution
     limit". Measured cost on the reference case: 63/218 branches (29%) carry a
@@ -195,9 +196,53 @@ against a traceable standard; that claim stays out of reach and must not be made
     be discarding real measurements, or may be correct, and nothing in the
     codebase can currently tell which.
 
+    **Measured — and the result overturns the paragraph above.** `tools/floor_sweep.py`
+    drives a digital tube down towards one voxel with PSF and noise and measures
+    every section with the pipeline's own `analyze_section`. The floor is defined
+    on RESPONSE, not on bias: the smallest true diameter where the measurement
+    still tracks the object (local slope >= 0.5) with usable precision (CV <= 10%)
+    and a measurable section (>= 90%). Bias is deliberately excluded — on the
+    phantom it is a near-constant offset in mm from the PSF, so as a *fraction* it
+    grows as the diameter shrinks and would condemn small airways for a systematic,
+    calibratable error rather than for loss of information.
+
+    | kernel | 0.60 mm | 0.70 mm | 1.00 mm | 1.25 mm |
+    |---|---|---|---|---|
+    | sharp (low blur, high noise) | 3.5 | 2.5 | 2.5 | 3.5 |
+    | smooth (high blur, low noise) | 3.5 | 3.5 | 5.0 | none in range |
+
+    Floor in voxels: median 3.5, range 2.5–5.0.
+
+    Three conclusions, one of which is a correction:
+
+    (a) **The 66% prize does not exist.** In **0 of 8** configurations would a
+    2-voxel bound be sufficient. The estimate above — that dropping to 2 voxels
+    would recover 80 branches — was arithmetic on the demoted population, not a
+    statement about whether those measurements would be any good. They would not.
+
+    (b) **`VOXELS_FLOOR = 3.0` is mildly optimistic, not conservative.** It sits
+    below the measured median (3.5) and above the measured floor in only 2 of 8
+    configurations; in 5 it is too permissive. Some published calibers are
+    therefore below the honest floor for their reconstruction.
+
+    (c) **A single constant is the wrong shape for this parameter.** The floor
+    ranges 2.5–5.0 voxels and the dominant factor is the KERNEL, not the spacing —
+    the same dependence documented in the README's kernel section. At 1.25 mm with
+    a smooth kernel no diameter in the swept range qualifies at all: that
+    combination has no usable caliber channel.
+
+    **Still open:** making the floor a function of the reconstruction rather than a
+    constant, which requires (i) estimating the effective PSF per case — the sweep
+    parameterises it but does not measure it from a scanner — and (ii) deciding
+    what to do about (b), since tightening the floor removes currently published
+    values. The downsampling self-reference experiment (route b above) remains the
+    way to check the synthetic floor against real anatomy: the phantom is a smooth
+    circular tube cut perpendicular, so its floor is a LOWER bound on the real one.
+
     Two routes that need no phantom:
 
-    (a) **Extend the existing digital phantom into a calibration sweep.**
+    (a) **Extend the existing digital phantom into a calibration sweep.** *(done —
+    `phantom_core.py` + `tools/floor_sweep.py`; results above.)*
     `make_tube()` in `tests/test_section.py` already builds a tube with known
     lumen and wall in a parenchymal block, but as an *ideal step edge*: no PSF
     blur, no noise. Adding a PSF convolution and correlated noise, then sweeping
@@ -307,5 +352,7 @@ against a traceable standard; that claim stays out of reach and must not be made
 
 **Suggested order.** #27 first: it is cheap, it runs in CI, and until the floor is
 characterised every other yield number is measured against an unverified bound.
+*(Done — and it did not pay out as predicted: see #27(a). The value of the item
+turned out to be killing a wrong recommendation, not unlocking the tree.)*
 Then #28 and #29, both small changes with a clear mechanism and an immediate
 effect on what gets published. Then #30. #31 last, gated on #27.

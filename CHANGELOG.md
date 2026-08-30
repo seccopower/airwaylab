@@ -34,7 +34,18 @@
   **Nessuna censura**: la demozione resta subordinata allo sweep del #27, perche'
   la costante non e' calibrata e l'esito e' ipersensibile (0%, 62% o 88% di
   pareti demolite a seconda del valore scelto).
-- **198 test** (da 162).
+- **Floor di risoluzione misurato invece che assunto** (backlog #27).
+  `phantom_core.py` costruisce un tubo digitale seguendo la catena reale di
+  formazione dell'immagine (oggetto continuo -> PSF -> integrazione del voxel ->
+  rumore) e `tools/floor_sweep.py` fa scendere il diametro verso il voxel
+  misurando con lo stimatore vero della pipeline. Il floor e' definito sulla
+  RISPOSTA (pendenza, precisione, misurabilita'), non sul bias, che e' un offset
+  sistematico calibrabile. Risultato: floor mediano 3.5 voxel, intervallo
+  2.5-5.0, dominato dal KERNEL piu' che dallo spacing. **Il guadagno atteso non
+  esiste**: in 0 configurazioni su 8 un limite a 2 voxel sarebbe sufficiente, e
+  `VOXELS_FLOOR = 3.0` risulta semmai leggermente permissivo. Nessun parametro
+  e' stato cambiato: serve prima decidere cosa fare dei valori gia' pubblicati.
+- **210 test** (da 162).
 - **`VALIDATION_BACKLOG` sezione F: dove la resa si perde davvero.** Quattro
   perdite quantificate su un caso reale sottile (218 rami) invece che elencate
   per plausibilita': il floor di risoluzione (#27, 29% -> 66% potenziale), la
