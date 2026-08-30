@@ -24,7 +24,9 @@
   parenchima normale sotto la soglia dei -950 HU e gonfia il LAA-950; un kernel
   morbido sfuma il bordo di parete e fa sovrastimare la FWHM). Documentata la
   soluzione pulita — ricostruire due volte la stessa acquisizione — e reso
-  esplicito il peso dello spessore di strato sul floor di risoluzione.
+  esplicito il peso dello spessore di strato sul floor di risoluzione. Voce
+  corrispondente in `docs/DIZIONARIO_PARAMETRI.md`, sezione 0, con l'elenco
+  dei parametri spostati in ciascuna direzione.
 
 ## 1.1.0 — exploratory descriptors + audit-driven honesty hardening
 

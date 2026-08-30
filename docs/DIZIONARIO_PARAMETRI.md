@@ -31,6 +31,32 @@ piano della sezione, autovalore maggiore della metrica anisotropa `P·M·P`
 il percorso. *Significato:* limite di **processo**, non fisico validato; non si
 aggira con l'upsampling. *Codice:* `measure.py`, soglie in `qc_params.py`.
 
+**Kernel di ricostruzione** — Il filtro di convoluzione applicato durante la
+ricostruzione, non un post-processing: la stessa acquisizione grezza filtrata
+diversamente produce immagini diverse. Kernel *sharp* (es. Siemens B60s, GE
+BONE/LUNG) esaltano i bordi e amplificano il rumore; kernel *morbidi* (es. Siemens
+B30f, GE STANDARD) riducono il rumore e sfumano i bordi. *Significato:* il rumore
+non è simmetrico rispetto a una soglia, quindi il kernel **sposta i valori in
+direzioni opposte** a seconda del dominio:
+
+- **Parenchima** (`laa950_pct`, `perc15_hu`, `mld_hu`, e per estensione istogramma,
+  eterogeneità e cluster LAA) — un kernel sharp allarga l'istogramma delle densità:
+  voxel di parenchima normale attorno a −900 HU scendono sotto i −950 per solo
+  rumore e il LAA-950 **sale senza che sia cambiato nulla nel polmone**.
+- **Parete delle vie aeree** (`spessore_parete_mm`, `wall_area_pct`, `pi10`) — un
+  kernel morbido sfuma il bordo esterno e la FWHM **sovrastima** lo spessore, con
+  l'errore peggiore sulle pareti distali, già al limite di risoluzione.
+- **Vasi** (`tbv`, `bv5`, gradiente di pruning) — la soglia di segmentazione
+  vascolare eredita lo stesso effetto del rumore.
+
+*Limite:* nessun kernel è ottimo per entrambi i domini. La soluzione pulita è
+ricostruire **due volte la stessa acquisizione** (nessuna dose aggiuntiva: è solo
+ricalcolo) e leggere il parenchima dalla serie morbida e le vie aeree da quella
+nitida. In alternativa si fissa un kernel per l'intera coorte e non si confronta
+mai attraverso kernel diversi: una differenza di LAA-950 fra due kernel misura la
+ricostruzione, non il polmone. *Dove si verifica:* tag DICOM `(0018,1210)`
+`ConvolutionKernel` — non fidarsi del nome nella descrizione della serie.
+
 **Classi QC (`qc`)** — `ok` (misurabile) · `sotto-risoluzione` (sotto il floor:
 tenuto per topologia/territori, calibro nullo) · `fuga-contorno` (half-max sfora la
 maschera) · `no-lume` (air-witness fallito) · `moncone` (troppo corto) ·
