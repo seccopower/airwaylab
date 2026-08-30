@@ -4,8 +4,8 @@ title: "AirwayLab: transparent quantitative CT analysis of the airways"
 authors:
   - family-names: "Novali"
     given-names: "Mauro"
-version: 1.0.0
-date-released: 2026-08-22
+version: 1.1.0
+date-released: 2026-08-30
 url: "https://github.com/seccopower/airwaylab"
 repository-code: "https://github.com/seccopower/airwaylab"
 license: Apache-2.0

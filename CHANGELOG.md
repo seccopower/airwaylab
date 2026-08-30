@@ -30,7 +30,12 @@ method measures.
 - **Known-limitations section** — `docs/VALIDATION_BACKLOG.md` section E gathers
   the deep methodological limits of the new descriptors and the minimum
   conditions before a methods paper.
-- **166 unit tests** (from 122).
+- **Flow-report panels** — the exploratory flow tab replaces the
+  per-generation Plotly bar with four pure-CSS/SVG panels driven by
+  `flow.json`: pressure drop per lobe, measured-vs-imputed dissipation split,
+  specific-ventilation histogram, and mucus-plug occlusion before/after (with
+  a graceful empty state when no plugs). 3D tree kept; theme-aware.
+- **162 unit tests** (from 122).
 
 External dependency unchanged: TotalSegmentator (tested with v2.18.0).
 
