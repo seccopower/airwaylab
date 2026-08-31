@@ -5,7 +5,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "airwaylab", "pipeline"))
 
-from anonymize import disqualify_reason, rank_series   # noqa: E402
+from anonymize import (   # noqa: E402
+    acq_sidecar_path, disqualify_reason, merge_acquisition, rank_series,
+)
 
 
 def test_caso06_scenario_sceglie_la_sottile():
@@ -54,3 +56,54 @@ def test_missing_thickness_ranks_last_among_ok():
     ]
     ranked = rank_series(metas)
     assert ranked[0]['desc'] == 'thin 1mm'   # strato noto e sottile batte spessore ignoto
+
+
+# --------------------------------------------- provenienza di acquisizione
+# La NIfTI perde i tag DICOM: kernel, dose e scanner sparirebbero proprio dove
+# servono. Il sidecar li porta fino al report e alla riproducibilita'.
+
+def test_acq_sidecar_path_estensioni():
+    assert acq_sidecar_path('caso01.nii.gz') == 'caso01.acq.json'
+    assert acq_sidecar_path('caso01.nii') == 'caso01.acq.json'
+    assert acq_sidecar_path('/a/b/caso01.nii.gz') == '/a/b/caso01.acq.json'
+    # doppia estensione risolta una sola volta, non ricorsivamente
+    assert acq_sidecar_path('x.nii.gz.nii.gz') == 'x.nii.gz.acq.json'
+
+
+def test_acq_sidecar_path_senza_estensione_nota():
+    assert acq_sidecar_path('caso01') == 'caso01.acq.json'
+
+
+def test_merge_acquisition_innesta_sotto_acquisition():
+    info = {'iso': 0.7}
+    out = merge_acquisition(info, {'kernel': 'B60s', 'kvp': '120'})
+    assert out['acquisition'] == {'kernel': 'B60s', 'kvp': '120'}
+    assert out['iso'] == 0.7           # il resto resta intatto
+
+
+def test_merge_acquisition_non_sovrascrive():
+    info = {'acquisition': {'kernel': 'gia_presente'}}
+    out = merge_acquisition(info, {'kernel': 'nuovo'})
+    assert out['acquisition'] == {'kernel': 'gia_presente'}
+
+
+def test_merge_acquisition_tollera_sidecar_assente():
+    """NIfTI fornita a mano: nessun sidecar, nessun errore, e soprattutto
+    nessun blocco 'acquisition' vuoto — assente e' diverso da mancante."""
+    for vuoto in (None, {}):
+        info = merge_acquisition({'iso': 0.7}, vuoto)
+        assert 'acquisition' not in info
+        assert info == {'iso': 0.7}
+
+
+def test_merge_acquisition_seg_info_none():
+    assert merge_acquisition(None, {'kernel': 'B60s'})['acquisition']['kernel'] == 'B60s'
+    assert merge_acquisition(None, None) == {}
+
+
+def test_merge_acquisition_copia_il_sidecar():
+    """Mutare il sidecar dopo l'innesto non deve toccare seg_info."""
+    side = {'kernel': 'B60s'}
+    info = merge_acquisition({}, side)
+    side['kernel'] = 'ALTRO'
+    assert info['acquisition']['kernel'] == 'B60s'

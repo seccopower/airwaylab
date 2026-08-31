@@ -17,6 +17,7 @@ quantificazione (albero/calibro/territori/flusso).
 Nota: anonimizzazione di base. Per studi formali usare un profilo completo
 (DICOM PS3.15) e verificare le policy del proprio ente.
 """
+import json
 import os
 import sys
 
@@ -101,7 +102,12 @@ def find_series(root):
 
 
 def describe(f):
-    """Legge pochi tag: modalita', descrizione, spessore, ImageType."""
+    """Legge pochi tag: modalita', descrizione, spessore, ImageType, kernel.
+
+    Il kernel di ricostruzione si MOSTRA e non decide: non entra nel ranking
+    delle serie. Serve al lettore, perche' densitometria e morfometria delle
+    vie aeree lo vogliono opposto (vedi la sezione kernel del README) e la
+    NIfTI, perdendo i tag, non lo porterebbe piu' da nessuna parte."""
     r = sitk.ImageFileReader()
     r.SetFileName(f)
     r.LoadPrivateTagsOff()
@@ -112,7 +118,74 @@ def describe(f):
             return r.GetMetaData(t).strip()
         except Exception:
             return '?'
-    return (tag('0008|0060'), tag('0008|103e'), tag('0018|0050'), tag('0008|0008'))
+    return (tag('0008|0060'), tag('0008|103e'), tag('0018|0050'),
+            tag('0008|0008'), tag('0018|1210'))
+
+
+# Campi di acquisizione persistiti accanto alla NIfTI. La conversione perde i
+# tag DICOM, quindi kernel, dose e scanner sparirebbero proprio quando servono:
+# il kernel per leggere densitometria e pareti (sezione kernel del README), kV e
+# mAs perche' il rumore dipende da li' e il rumore sposta ogni soglia, lo scanner
+# perche' i confronti valgono solo a protocollo uguale.
+ACQ_TAGS = (
+    ('modality', '0008|0060'),
+    ('series_description', '0008|103e'),
+    ('slice_thickness_mm', '0018|0050'),
+    ('kernel', '0018|1210'),
+    ('kvp', '0018|0060'),
+    ('exposure_mas', '0018|1152'),      # Exposure = mAs
+    ('tube_current_ma', '0018|1151'),
+    ('ctdivol_mgycm', '0018|9345'),     # spesso assente per-fetta: '?' e' normale
+    ('manufacturer', '0008|0070'),
+    ('model', '0008|1090'),
+)
+
+
+def acq_sidecar_path(ct_path):
+    """Percorso del sidecar di acquisizione accanto a una NIfTI.
+
+    X.nii.gz -> X.acq.json, X.nii -> X.acq.json. Puro: nessun I/O."""
+    p = str(ct_path)
+    for ext in ('.nii.gz', '.nii'):
+        if p.endswith(ext):
+            return p[:-len(ext)] + '.acq.json'
+    return p + '.acq.json'
+
+
+def merge_acquisition(seg_info, sidecar):
+    """Innesta il sidecar sotto seg_info['acquisition'] senza sovrascrivere.
+
+    Tollera sidecar None o vuoto: in quel caso seg_info torna intatto, cosi' una
+    NIfTI fornita a mano (senza sidecar) non produce ne' errori ne' un blocco
+    'acquisition' vuoto che sembrerebbe un dato mancante invece che assente.
+    Puro: nessun I/O."""
+    if seg_info is None:
+        seg_info = {}
+    if not sidecar:
+        return seg_info
+    seg_info.setdefault('acquisition', dict(sidecar))
+    return seg_info
+
+
+def read_acquisition(f):
+    """Legge i parametri di acquisizione da UN file DICOM.
+
+    Stesso patto di describe(): un campo assente vale '?', mai un'eccezione."""
+    r = sitk.ImageFileReader()
+    r.SetFileName(f)
+    r.LoadPrivateTagsOff()
+    try:
+        r.ReadImageInformation()
+    except Exception:
+        return {name: '?' for name, _ in ACQ_TAGS}
+
+    def tag(t):
+        try:
+            v = r.GetMetaData(t).strip()
+        except Exception:
+            return '?'
+        return v or '?'
+    return {name: tag(t) for name, t in ACQ_TAGS}
 
 
 def _zpositions(files):
@@ -140,21 +213,24 @@ def main(src, dst, pick=None):
     items = list(series.items())            # [(sid, files)]
     metas = []
     for sid, files in items:
-        mod, desc, thick, itype = describe(files[0])
+        mod, desc, thick, itype, kernel = describe(files[0])
         metas.append({'modality': mod, 'desc': desc, 'thickness': thick,
-                      'image_type': itype, 'n_images': len(files)})
+                      'image_type': itype, 'n_images': len(files),
+                      'kernel': kernel})
 
     ranked = rank_series(metas)
     print(f'{len(items)} serie trovate (ordinate per idoneita\' all\'analisi):')
     for m in ranked:
         i = m['orig_index']
         flag = 'X ' + m['disq'] if m['disq'] else 'OK'
-        print(f'  [{i}] {m["n_images"]:5d} imm  {m["modality"]:3s}  strato {m["thickness"]} mm  '
+        print(f'  [{i}] {m["n_images"]:5d} imm  {m["modality"]:3s}  '
+              f'strato {m["thickness"]} mm · kernel {m.get("kernel", "?")}  '
               f'[{flag}]  {m["desc"]}')
 
     if pick is not None:
         idx = int(pick)
-        print(f'-> serie forzata da riga di comando: [{idx}]')
+        print(f'-> serie forzata da riga di comando: [{idx}] '
+              f'(kernel {metas[idx].get("kernel", "?")})')
     else:
         best = next((m for m in ranked if m['disq'] is None), None)
         if best is None:
@@ -162,7 +238,8 @@ def main(src, dst, pick=None):
             print('ATTENZIONE: nessuna serie pienamente idonea; uso la meno peggio.')
         idx = best['orig_index']
         print(f'-> scelta automatica: [{idx}] (strato {best["thickness"]} mm, '
-              f'{best["n_images"]} immagini) — {best["desc"]}')
+              f'kernel {best.get("kernel", "?")}, {best["n_images"]} immagini) '
+              f'— {best["desc"]}')
 
     chosen = metas[idx]
     tv = _parse_thickness(chosen.get('thickness'))
@@ -221,6 +298,18 @@ def main(src, dst, pick=None):
     # tv e' la sentinella 999.0 quando lo spessore non e' leggibile: in quel caso
     # non c'e' un valore dichiarato da confrontare, non un valore assurdo.
     declared = None if tv >= UNKNOWN_THICKNESS_MM else tv
+    # Provenienza di acquisizione accanto alla NIfTI: il formato non ha dove
+    # tenerla, e senza questa il kernel non arriverebbe ne' al report ne' alla
+    # riproducibilita'. Nessun campo mancante puo' far fallire la scrittura.
+    try:
+        side = read_acquisition(files[0])
+        with open(acq_sidecar_path(dst), 'w', encoding='utf-8') as fh:
+            json.dump(side, fh, indent=1, ensure_ascii=False)
+        print('provenienza acquisizione:', acq_sidecar_path(dst),
+              '| kernel', side.get('kernel', '?'))
+    except Exception as e:
+        print(f'nota: provenienza di acquisizione non scritta ({e})')
+
     banner = geometry_banner(img.GetSize(), img.GetSpacing(), declared, dup=dup)
     if banner:
         print('\n' + banner + '\n')

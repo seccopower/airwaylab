@@ -74,9 +74,12 @@ def _build_html(prefix, name, biopsies_json="[]"):
     else:
         seg_desc = _html.escape(info.get("backend", "external segmentation")) + \
             " · air witness + resolution gates"
+    kern = (info.get("acquisition") or {}).get("kernel")
+    kern_txt = (f" · kernel {_html.escape(str(kern))}"
+                if kern and str(kern) != "?" else "")
     sub = (
         f"{safe_name} — native slices {sp[2]}&#8202;mm, {info['iso']}&#8202;mm isotropic "
-        f"reconstruction · {seg_desc} · "
+        f"reconstruction{kern_txt} · {seg_desc} · "
         f"AirwayLab v{__version__}"
     )
     html = (
@@ -158,6 +161,19 @@ def cmd_run(args):
         info["refined_centerline"] = refined
         info["tight_small_window"] = tight
         info["airwaylab_version"] = __version__
+        # provenienza di acquisizione: la NIfTI non porta i tag DICOM, quindi
+        # kernel, dose e scanner arrivano dal sidecar scritto da anonymize.py.
+        # Se manca (NIfTI fornita dall'utente) non e' un errore: si prosegue
+        # senza blocco 'acquisition', che e' assente e non vuoto.
+        try:
+            sys.path.insert(0, PIPE)
+            from anonymize import acq_sidecar_path, merge_acquisition
+            sidecar_path = acq_sidecar_path(src)
+            if os.path.exists(sidecar_path):
+                with open(sidecar_path, encoding="utf-8") as fh:
+                    info = merge_acquisition(info, json.load(fh))
+        except Exception as e:
+            print(f"nota: provenienza di acquisizione non innestata ({e})")
         json.dump(info, open("out/seg_info.json", "w"), indent=1)
 
     for k, (script, desc) in enumerate(build_steps(mask=mask, refine=args.refine)):
