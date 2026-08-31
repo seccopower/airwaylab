@@ -29,5 +29,3 @@ papers*/
 prova_out/
 *_routes.csv
 
-# configurazione locale degli strumenti di sviluppo
-.claude/
